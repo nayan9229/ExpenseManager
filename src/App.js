@@ -14,8 +14,8 @@ class App extends Component {
   constructor() {
     super();
 
-    this.clientId ="YOUR_CLIENT_ID";
-    this.spreadsheetId = "YOUR_SPREADSHEET_ID";
+    this.clientId = "18732986248-h90b5mcds7hh4hkk4le5on31dcsnsb4c.apps.googleusercontent.com";
+    this.spreadsheetId = "1oyQELCWszXNOeCjmH6PHv72bSyOH39rcgCHv6eUlmt0";
 
     this.state = {
       signedIn: undefined,
@@ -226,6 +226,13 @@ class App extends Component {
           categories: categories,
           expenses: (response.result.valueRanges[2].values || [])
             .map(this.parseExpense)
+            .filter(exp => {
+              if (exp.category === 'X' || exp.category === 'x') {
+                if (exp.description.length > 0) return true;
+                else return false;
+              }
+              else return true;
+            })
             .reverse()
             .slice(0, 30),
           processing: false,
