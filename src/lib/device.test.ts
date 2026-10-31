@@ -6,6 +6,8 @@ import {
   markBootstrapped,
   rememberMember,
   rememberedMemberId,
+  setSpeechLanguage,
+  speechLanguage,
   type DeviceStore,
 } from './device'
 
@@ -78,5 +80,29 @@ describe('bootstrapped flag', () => {
   test('a broken store reports not bootstrapped and never throws', () => {
     expect(isBootstrapped(brokenStore)).toBe(false)
     expect(() => markBootstrapped(brokenStore)).not.toThrow()
+  })
+})
+
+describe('speech language', () => {
+  test('is English (India) on a fresh device and remembers Hindi (India) once chosen', () => {
+    const store = memoryStore()
+    expect(speechLanguage(store)).toBe('en-IN')
+
+    setSpeechLanguage('hi-IN', store)
+    expect(speechLanguage(store)).toBe('hi-IN')
+
+    setSpeechLanguage('en-IN', store)
+    expect(speechLanguage(store)).toBe('en-IN')
+  })
+
+  test('anything else stored reads as English (India)', () => {
+    const store = memoryStore()
+    store.setItem('fem.speechLanguage', 'fr-FR')
+    expect(speechLanguage(store)).toBe('en-IN')
+  })
+
+  test('a broken store reads English (India) and never throws', () => {
+    expect(speechLanguage(brokenStore)).toBe('en-IN')
+    expect(() => setSpeechLanguage('hi-IN', brokenStore)).not.toThrow()
   })
 })

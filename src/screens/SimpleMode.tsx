@@ -1,5 +1,6 @@
 import { Camera, CircleCheck, Keyboard, Pencil, Trash2, Users } from 'lucide-react'
 import { Button } from '../components/Button'
+import { VoiceEntry, type VoiceResult } from '../components/VoiceEntry'
 import type { Category, Expense, Member } from '../lib/api'
 import { canEdit } from '../lib/editExpense'
 import { dayLabel, istToday } from '../lib/istDate'
@@ -16,6 +17,8 @@ type Props = {
   /** The Expense just deleted, for the confirmation line. */
   justDeleted?: Expense | null
   onQuickExpense: () => void
+  /** A voice attempt finished: open Quick Expense with its prefill or its one-line failure. */
+  onVoice: (result: VoiceResult) => void
   /** Opens an Expense for edit or delete. */
   onEdit: (expense: Expense) => void
   onSwitch: () => void
@@ -24,9 +27,21 @@ type Props = {
 /**
  * Simple Mode (GLOSSARY): greeting, the two giant cards, and the Member's
  * own last five Expenses, each one tappable to edit or delete it. Scan
- * Receipt is a placeholder until ticket 06; ticket 10 adds the mic.
+ * Receipt is a placeholder until ticket 06; the mic shows only where the
+ * browser can listen.
  */
-export function SimpleMode({ member, members, categories, expenses, justSaved, justDeleted = null, onQuickExpense, onEdit, onSwitch }: Props) {
+export function SimpleMode({
+  member,
+  members,
+  categories,
+  expenses,
+  justSaved,
+  justDeleted = null,
+  onQuickExpense,
+  onVoice,
+  onEdit,
+  onSwitch,
+}: Props) {
   const today = istToday()
   const mine = lastFive(expenses, member.memberId)
 
@@ -62,6 +77,8 @@ export function SimpleMode({ member, members, categories, expenses, justSaved, j
           Quick Expense
         </button>
       </div>
+
+      <VoiceEntry member={member} categories={categories} onResult={onVoice} />
 
       <p role="status" className="min-h-8 text-lg">
         {justSaved && (
