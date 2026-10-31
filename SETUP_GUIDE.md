@@ -78,16 +78,16 @@ This guide walks through connecting your **Expense Manager** Google Drive folder
 
 ---
 
-## Step 5: Local Development & Folder Bootstrap
+## Step 5: Local Development & Bootstrap
 
-1. Create a `.env.local` file in the root of your project (never committed to Git):
+1. Copy `.env.example` to `.env` in the root of the project (never committed to Git; `vercel dev` reads `.env`, not `.env.local`) and fill in every value:
    ```ini
    # Google OAuth2 Credentials
    GOOGLE_CLIENT_ID="your-client-id.apps.googleusercontent.com"
    GOOGLE_CLIENT_SECRET="GOCSPX-your-client-secret"
    GOOGLE_REFRESH_TOKEN="1//0g-your-permanent-refresh-token"
 
-   # Google Drive & Sheets IDs
+   # Google Drive & Sheets IDs (use a separate folder for development)
    GOOGLE_DRIVE_FOLDER_ID="your-expense-manager-folder-id"
    GOOGLE_SHEET_ID=""
 
@@ -98,11 +98,8 @@ This guide walks through connecting your **Expense Manager** Google Drive folder
    FAMILY_ACCESS_CODE="choose-a-secret-family-passphrase"
    JWT_SECRET="generate-a-random-32-char-secret-string"
    ```
-2. Run the initialization script once to create the `Expenses_Database` Google Sheet and `Receipts/YYYY/MM` subfolders inside your `Expense Manager` folder:
-   ```bash
-   npx tsx scripts/init-drive.ts
-   ```
-3. Copy the `GOOGLE_SHEET_ID` printed in your terminal and paste it into `.env.local`.
+2. Run `vercel dev --listen 3000`, open http://localhost:3000 and pair with the Access Code. The first paired device runs Bootstrap by itself: it creates the `Receipts` folder and the `Expenses_Database` Ledger (four tabs, headers, seven Categories and an `admin` Member) inside your folder. There is nothing to run by hand, and running it again changes nothing. To watch it directly: `curl -c jar -X POST -H 'Content-Type: application/json' -d '{"accessCode":"..."}' http://localhost:3000/api/auth && curl -b jar -X POST http://localhost:3000/api/bootstrap`.
+3. Open the Ledger (the app links to it from the profile switcher) and set the Admin's PIN: Members tab, `PIN_Code` cell of the `admin` row, four digits. Optionally copy the Ledger's ID from its URL into `GOOGLE_SHEET_ID` so the functions skip the folder lookup.
 
 ---
 

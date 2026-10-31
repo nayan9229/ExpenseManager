@@ -1,8 +1,10 @@
+import { QueryClientProvider } from '@tanstack/react-query'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { registerSW } from 'virtual:pwa-register'
 import App from './App'
 import './app.css'
+import { queryClient } from './lib/readModel'
 
 // Precaches the shell and swaps in new versions on the next load.
 registerSW({ immediate: true })
@@ -12,6 +14,8 @@ if (!root) throw new Error('index.html is missing #root')
 
 createRoot(root).render(
   <StrictMode>
-    <App />
+    <QueryClientProvider client={queryClient}>
+      <App />
+    </QueryClientProvider>
   </StrictMode>,
 )
