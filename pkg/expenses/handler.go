@@ -119,10 +119,23 @@ func (s Service) serve(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// read answers the read model. `?reimbursement=pending` swaps the date
+// window for every active Expense whose Reimbursement is pending, however
+// old (the Reimbursable Queue); `from` and `to` are ignored then.
 func (s Service) read(w http.ResponseWriter, r *http.Request) {
 	now := s.now()
-	from, to, err := window(r.URL.Query().Get("from"), r.URL.Query().Get("to"), now)
-	if err != nil {
+	q := r.URL.Query()
+	pendingOnly := false
+	switch q.Get("reimbursement") {
+	case "":
+	case string(ledger.ReimbursementPending):
+		pendingOnly = true
+	default:
+		httpjson.WriteError(w, http.StatusBadRequest, "BAD_REQUEST", "reimbursement can only be pending")
+		return
+	}
+	from, to, err := window(q.Get("from"), q.Get("to"), now)
+	if err != nil && !pendingOnly {
 		httpjson.WriteError(w, http.StatusBadRequest, "BAD_REQUEST", err.Error())
 		return
 	}
@@ -139,7 +152,12 @@ func (s Service) read(w http.ResponseWriter, r *http.Request) {
 		LedgerURL:      snap.URL,
 		ServerTime:     now.In(ledger.IST).Format(time.RFC3339),
 	}
-	for _, e := range inWindow(ledger.ParseExpenses(snap.Rows[ledger.Expenses]), from, to) {
+	all := ledger.ParseExpenses(snap.Rows[ledger.Expenses])
+	kept := pendingReimbursements(all)
+	if !pendingOnly {
+		kept = inWindow(all, from, to)
+	}
+	for _, e := range kept {
 		model.Expenses = append(model.Expenses, viewOf(e))
 	}
 	for _, m := range ledger.ParseMembers(snap.Rows[ledger.Members]) {

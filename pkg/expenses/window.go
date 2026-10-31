@@ -45,9 +45,23 @@ func dateParam(s string) (string, error) {
 // inWindow keeps the active Expenses dated from..to (inclusive; YYYY-MM-DD
 // strings compare in date order) and sorts them newest first.
 func inWindow(all []ledger.Expense, from, to string) []ledger.Expense {
+	return newestFirst(all, func(e ledger.Expense) bool {
+		return e.Status == ledger.StatusActive && e.ExpenseDate >= from && e.ExpenseDate <= to
+	})
+}
+
+// pendingReimbursements keeps every active Expense whose Reimbursement is
+// pending, whatever its date, newest first.
+func pendingReimbursements(all []ledger.Expense) []ledger.Expense {
+	return newestFirst(all, func(e ledger.Expense) bool {
+		return e.Status == ledger.StatusActive && e.Reimbursement == ledger.ReimbursementPending
+	})
+}
+
+func newestFirst(all []ledger.Expense, keep func(ledger.Expense) bool) []ledger.Expense {
 	kept := []ledger.Expense{}
 	for _, e := range all {
-		if e.Status == ledger.StatusActive && e.ExpenseDate >= from && e.ExpenseDate <= to {
+		if keep(e) {
 			kept = append(kept, e)
 		}
 	}

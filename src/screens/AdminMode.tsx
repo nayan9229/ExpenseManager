@@ -21,7 +21,7 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { Button } from '../components/Button'
 import { UpdateBanner } from '../components/UpdateBanner'
 import { ApiError, runBootstrap, type Category, type Expense, type Member, type ReadModel } from '../lib/api'
-import { markPaidBack, useMonthModel } from '../lib/adminData'
+import { markPaidBack, useMonthModel, usePendingReimbursements } from '../lib/adminData'
 import {
   breakdown,
   burnRates,
@@ -44,7 +44,7 @@ import { formatRupees } from '../lib/rupees'
 type Props = {
   /** The Admin, PIN already typed. */
   member: Member
-  /** The default window (90 days): the Reimbursable Queue also lists older pending Expenses from it. */
+  /** The default window (90 days): the Reimbursable Queue falls back to it until every pending Reimbursement has loaded. */
   model: ReadModel
   /** The month on screen and the Member filter; App keeps them so a trip to edit comes back to the same view. */
   month: Month
@@ -76,12 +76,13 @@ export function AdminMode(props: Props) {
   const today = istToday()
   const thisMonth = monthOf(today)
   const monthModel = useMonthModel(month)
+  const pendingModel = usePendingReimbursements()
   const data = monthModel.data
   const members = data?.members ?? model.members
   const categories = data?.categories ?? model.categories
   const loadingMonth = monthModel.isFetching && monthModel.isPlaceholderData
 
-  const unpaired = monthModel.error instanceof ApiError && monthModel.error.status === 401
+  const unpaired = [monthModel.error, pendingModel.error].some((err) => err instanceof ApiError && err.status === 401)
   const { onUnpaired } = props
   useEffect(() => {
     if (unpaired) onUnpaired()
@@ -90,7 +91,10 @@ export function AdminMode(props: Props) {
   const monthExpenses = data ? data.expenses.filter((e) => monthOf(e.expenseDate) === month) : []
   const shown = paidByMember(monthExpenses, filter)
   const burn = burnRates(categories, shown)
-  const queue = reimbursableQueue(paidByMember(mergeExpenses(model.expenses, data?.expenses ?? []), filter), members)
+  // Every pending Reimbursement, however old; until that list arrives, the
+  // ones in the windows already loaded.
+  const owed = pendingModel.data?.expenses ?? mergeExpenses(model.expenses, data?.expenses ?? [])
+  const queue = reimbursableQueue(paidByMember(owed, filter), members)
   const due = dueNotLogged(data?.recurringRules ?? model.recurringRules, monthExpenses, month)
   const filterName = filter === null ? null : (members.find((m) => m.memberId === filter)?.name ?? 'Unknown')
 

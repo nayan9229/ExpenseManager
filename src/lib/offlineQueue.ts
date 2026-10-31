@@ -211,7 +211,12 @@ export class OfflineQueue {
   async readModel(): Promise<ReadModel | null> {
     const cached = await this.db.cache.get('readModel')
     if (!cached) return null
-    return (await this.items()).reduce(overlay, cached.model)
+    return this.layOver(cached.model)
+  }
+
+  /** Any read model (a month, the pending Reimbursements) as it looks with every queued change applied. */
+  async layOver(model: ReadModel): Promise<ReadModel> {
+    return (await this.items()).reduce(overlay, model)
   }
 
   /** Which Expenses have a change still on the phone, and whether one of them needs attention. */

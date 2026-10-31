@@ -33,7 +33,7 @@ export function daysIn(month: Month): number {
 }
 
 /** The inclusive `from` / `to` the `expenses` GET takes for `month`. */
-export function monthWindow(month: Month): Required<ExpenseWindow> {
+export function monthWindow(month: Month): Required<Pick<ExpenseWindow, 'from' | 'to'>> {
   return { from: `${month}-01`, to: `${month}-${String(daysIn(month)).padStart(2, '0')}` }
 }
 

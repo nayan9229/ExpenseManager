@@ -255,15 +255,21 @@ export async function runBootstrap(fetchImpl: typeof fetch = fetch): Promise<Boo
   return readJson<BootstrapReport>(res)
 }
 
-/** An inclusive `YYYY-MM-DD` window; a missing end takes the server default. */
-export type ExpenseWindow = { from?: string; to?: string }
+/**
+ * An inclusive `YYYY-MM-DD` window; a missing end takes the server default.
+ * `reimbursement: 'pending'` asks instead for every active Expense still
+ * owed, whatever its date (the Reimbursable Queue).
+ */
+export type ExpenseWindow = { from?: string; to?: string; reimbursement?: 'pending' }
 
 /**
  * Loads the read model from the `expenses` function, optionally for a wider
- * or narrower date window than the default (Admin Mode's month view).
+ * or narrower date window than the default (Admin Mode's month view), or
+ * for every pending Reimbursement.
  */
 export async function getReadModel(fetchImpl: typeof fetch = fetch, window: ExpenseWindow = {}): Promise<ReadModel> {
   const query = new URLSearchParams()
+  if (window.reimbursement) query.set('reimbursement', window.reimbursement)
   if (window.from) query.set('from', window.from)
   if (window.to) query.set('to', window.to)
   const qs = query.toString()
