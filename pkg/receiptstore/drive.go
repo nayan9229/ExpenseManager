@@ -22,7 +22,7 @@ import (
 const UploadEndpoint = "https://www.googleapis.com/upload/drive/v3/files"
 
 // fileFields is what File and Rename ask Drive for.
-const fileFields = "id,name,mimeType,parents,webViewLink,size,trashed"
+const fileFields = "id,name,mimeType,parents,webViewLink,thumbnailLink,size,trashed"
 
 // Drive is the production Store, backed by the Drive v3 API.
 type Drive struct {
@@ -121,8 +121,27 @@ func (d *Drive) Rename(ctx context.Context, r Rename) (File, error) {
 func viewOf(f *drive.File) File {
 	return File{
 		ID: f.Id, Name: f.Name, MIMEType: f.MimeType, Parents: f.Parents,
-		WebViewLink: f.WebViewLink, Size: f.Size, Trashed: f.Trashed,
+		WebViewLink: f.WebViewLink, ThumbnailLink: f.ThumbnailLink, Size: f.Size, Trashed: f.Trashed,
 	}
+}
+
+// Download implements Store: `files.get?alt=media` through the client
+// library, which sends the Bearer token (research answer 5). At most
+// limit+1 bytes are read, so an oversize file costs one extra byte.
+func (d *Drive) Download(ctx context.Context, id string, limit int64) ([]byte, error) {
+	res, err := d.svc.Files.Get(id).SupportsAllDrives(true).Context(ctx).Download()
+	if err != nil {
+		return nil, driveError("download "+id, err)
+	}
+	defer res.Body.Close()
+	body, err := io.ReadAll(io.LimitReader(res.Body, limit+1))
+	if err != nil {
+		return nil, fmt.Errorf("drive: download %s: %w", id, err)
+	}
+	if int64(len(body)) > limit {
+		return nil, ErrTooLarge
+	}
+	return body, nil
 }
 
 func driveError(what string, err error) error {

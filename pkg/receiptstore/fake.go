@@ -15,6 +15,8 @@ type Fake struct {
 	Files   []FakeFile
 	// Uploads records every resumable session opened, in order.
 	Uploads []FakeUpload
+	// Downloads records the ID of every file whose bytes were read.
+	Downloads []string
 	// Writes counts calls that changed something, so a test can prove an
 	// idempotent handler wrote nothing the second time.
 	Writes int
@@ -36,6 +38,9 @@ type FakeFile struct {
 	Name     string
 	MIMEType string
 	Trashed  bool
+	// Content is the file's bytes; Size, when zero, is len(Content).
+	Content []byte
+	Size    int64
 }
 
 // FakeUpload is a resumable session as the server opened it.
@@ -156,10 +161,34 @@ func (f *Fake) Rename(_ context.Context, r Rename) (File, error) {
 }
 
 func fakeView(file FakeFile) File {
+	size := file.Size
+	if size == 0 {
+		size = int64(len(file.Content))
+	}
 	return File{
 		ID: file.ID, Name: file.Name, MIMEType: file.MIMEType, Parents: slices.Clip([]string{file.ParentID}),
-		WebViewLink: "https://drive.google.com/file/d/" + file.ID + "/view?usp=drivesdk", Trashed: file.Trashed,
+		WebViewLink: "https://drive.google.com/file/d/" + file.ID + "/view?usp=drivesdk", Size: size, Trashed: file.Trashed,
 	}
+}
+
+// Download implements Store.
+func (f *Fake) Download(_ context.Context, id string, limit int64) ([]byte, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.Err != nil {
+		return nil, f.Err
+	}
+	for _, file := range f.Files {
+		if file.ID != id {
+			continue
+		}
+		f.Downloads = append(f.Downloads, id)
+		if int64(len(file.Content)) > limit {
+			return nil, ErrTooLarge
+		}
+		return slices.Clone(file.Content), nil
+	}
+	return nil, ErrNotFound
 }
 
 // Find returns the folder called name under parentID, or nil.
