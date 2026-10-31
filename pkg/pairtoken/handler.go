@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"time"
 
+	"github.com/nayan9229/ExpenseManager/pkg/endpoint"
 	"github.com/nayan9229/ExpenseManager/pkg/httpjson"
 	"github.com/nayan9229/ExpenseManager/pkg/paircode"
 	"github.com/nayan9229/ExpenseManager/pkg/session"
@@ -25,22 +26,21 @@ type Token struct {
 	ExpiresAt string `json:"expiresAt"`
 }
 
+// function is the `pair-token` function's name and methods.
+var function = endpoint.Function{Name: "pair-token", Methods: []string{http.MethodGet}}
+
 // Handler serves GET for a paired device.
 func Handler(w http.ResponseWriter, r *http.Request) {
-	session.Require(serve)(w, r)
+	function.Production(func(*http.Request) (http.HandlerFunc, error) {
+		secret, err := session.SecretFromEnv()
+		if err != nil {
+			return nil, err
+		}
+		return func(w http.ResponseWriter, r *http.Request) { serve(w, r, secret) }, nil
+	})(w, r)
 }
 
-func serve(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		w.Header().Set("Allow", "GET")
-		httpjson.WriteError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "pair-token accepts GET only")
-		return
-	}
-	secret, err := session.SecretFromEnv()
-	if err != nil {
-		httpjson.WriteError(w, http.StatusInternalServerError, "SERVER_MISCONFIGURED", err.Error())
-		return
-	}
+func serve(w http.ResponseWriter, r *http.Request, secret []byte) {
 	minted := paircode.Derive(secret, time.Now())
 	link := url.URL{Scheme: scheme(r), Host: host(r), Path: "/", RawQuery: url.Values{"pairToken": {minted.Code}}.Encode()}
 	w.Header().Set("Cache-Control", "no-store")

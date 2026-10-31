@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/nayan9229/ExpenseManager/pkg/deps"
+	"github.com/nayan9229/ExpenseManager/pkg/endpoint"
 	"github.com/nayan9229/ExpenseManager/pkg/httpjson"
 	"github.com/nayan9229/ExpenseManager/pkg/ledger"
 	"github.com/nayan9229/ExpenseManager/pkg/receiptstore"
@@ -58,32 +59,22 @@ func (s Service) Handler() http.HandlerFunc {
 // Handler is the production entry point: the Session and the method are
 // checked first, then the Receipt Store is built from the environment.
 func Handler(w http.ResponseWriter, r *http.Request) {
-	session.Require(func(w http.ResponseWriter, r *http.Request) {
-		if rejectMethod(w, r) {
-			return
-		}
+	function.Production(func(r *http.Request) (http.HandlerFunc, error) {
 		d, err := deps.FromEnv(r.Context())
 		if err != nil {
-			httpjson.WriteError(w, http.StatusInternalServerError, "SERVER_MISCONFIGURED", err.Error())
-			return
+			return nil, err
 		}
-		Service{Store: d.Store, FolderID: d.FolderID}.serve(w, r)
+		return Service{Store: d.Store, FolderID: d.FolderID}.serve, nil
 	})(w, r)
 }
 
-func rejectMethod(w http.ResponseWriter, r *http.Request) bool {
-	if r.Method == http.MethodPost {
-		return false
-	}
-	w.Header().Set("Allow", "POST")
-	httpjson.WriteError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "upload-url accepts POST only")
-	return true
-}
+// function is the `upload-url` function's name and methods.
+var function = endpoint.Function{Name: "upload-url", Methods: []string{http.MethodPost}}
 
 var tempName = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.([a-z]+)$`)
 
 func (s Service) serve(w http.ResponseWriter, r *http.Request) {
-	if rejectMethod(w, r) {
+	if function.RejectMethod(w, r) {
 		return
 	}
 	var req Request

@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/nayan9229/ExpenseManager/pkg/deps"
+	"github.com/nayan9229/ExpenseManager/pkg/endpoint"
 	"github.com/nayan9229/ExpenseManager/pkg/httpjson"
 	"github.com/nayan9229/ExpenseManager/pkg/receiptstore"
 	"github.com/nayan9229/ExpenseManager/pkg/session"
@@ -37,35 +38,24 @@ func (s Service) Handler() http.HandlerFunc {
 // Handler is the production entry point: Session, method, then the Gemini
 // configuration and the Google seams from the environment.
 func Handler(w http.ResponseWriter, r *http.Request) {
-	session.Require(func(w http.ResponseWriter, r *http.Request) {
-		if rejectMethod(w, r) {
-			return
-		}
+	function.Production(func(r *http.Request) (http.HandlerFunc, error) {
 		cfg, err := ConfigFromEnv()
 		if err != nil {
-			httpjson.WriteError(w, http.StatusInternalServerError, "SERVER_MISCONFIGURED", err.Error())
-			return
+			return nil, err
 		}
 		d, err := deps.FromEnv(r.Context())
 		if err != nil {
-			httpjson.WriteError(w, http.StatusInternalServerError, "SERVER_MISCONFIGURED", err.Error())
-			return
+			return nil, err
 		}
-		Service{Store: d.Store, OCR: NewGemini(cfg), FolderID: d.FolderID}.serve(w, r)
+		return Service{Store: d.Store, OCR: NewGemini(cfg), FolderID: d.FolderID}.serve, nil
 	})(w, r)
 }
 
-func rejectMethod(w http.ResponseWriter, r *http.Request) bool {
-	if r.Method == http.MethodPost {
-		return false
-	}
-	w.Header().Set("Allow", "POST")
-	httpjson.WriteError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "ocr accepts POST only")
-	return true
-}
+// function is the `ocr` function's name and methods.
+var function = endpoint.Function{Name: "ocr", Methods: []string{http.MethodPost}}
 
 func (s Service) serve(w http.ResponseWriter, r *http.Request) {
-	if rejectMethod(w, r) {
+	if function.RejectMethod(w, r) {
 		return
 	}
 	var req Request

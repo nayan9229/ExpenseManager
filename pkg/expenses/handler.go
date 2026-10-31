@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/nayan9229/ExpenseManager/pkg/deps"
+	"github.com/nayan9229/ExpenseManager/pkg/endpoint"
 	"github.com/nayan9229/ExpenseManager/pkg/httpjson"
 	"github.com/nayan9229/ExpenseManager/pkg/ledger"
 	"github.com/nayan9229/ExpenseManager/pkg/receiptstore"
@@ -86,37 +87,24 @@ func (s Service) Handler() http.HandlerFunc {
 	return session.Require(s.serve)
 }
 
-// Handler is the production entry point: the Session is checked first, then
-// the Ledger is built from the environment for this one request.
+// function is the `expenses` function's name and methods.
+var function = endpoint.Function{Name: "expenses", Methods: []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete}}
+
+// Handler is the production entry point: the Session and the method are
+// checked first, then the Ledger is built from the environment for this one
+// request.
 func Handler(w http.ResponseWriter, r *http.Request) {
-	session.Require(func(w http.ResponseWriter, r *http.Request) {
-		if rejectMethod(w, r) {
-			return
-		}
+	function.Production(func(r *http.Request) (http.HandlerFunc, error) {
 		d, err := deps.FromEnv(r.Context())
 		if err != nil {
-			httpjson.WriteError(w, http.StatusInternalServerError, "SERVER_MISCONFIGURED", err.Error())
-			return
+			return nil, err
 		}
-		Service{Ledger: d.Ledger, Store: d.Store, FolderID: d.FolderID}.serve(w, r)
+		return Service{Ledger: d.Ledger, Store: d.Store, FolderID: d.FolderID}.serve, nil
 	})(w, r)
 }
 
-// rejectMethod answers 405 for anything this function does not serve and
-// reports whether it did. It runs before the environment is read, so a wrong
-// method is never mistaken for a misconfigured server.
-func rejectMethod(w http.ResponseWriter, r *http.Request) bool {
-	switch r.Method {
-	case http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete:
-		return false
-	}
-	w.Header().Set("Allow", "GET, POST, PUT, DELETE")
-	httpjson.WriteError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "expenses accepts GET, POST, PUT and DELETE")
-	return true
-}
-
 func (s Service) serve(w http.ResponseWriter, r *http.Request) {
-	if rejectMethod(w, r) {
+	if function.RejectMethod(w, r) {
 		return
 	}
 	switch r.Method {

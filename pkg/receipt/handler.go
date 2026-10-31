@@ -12,6 +12,7 @@ import (
 	"strconv"
 
 	"github.com/nayan9229/ExpenseManager/pkg/deps"
+	"github.com/nayan9229/ExpenseManager/pkg/endpoint"
 	"github.com/nayan9229/ExpenseManager/pkg/httpjson"
 	"github.com/nayan9229/ExpenseManager/pkg/receiptstore"
 	"github.com/nayan9229/ExpenseManager/pkg/session"
@@ -42,30 +43,20 @@ func (s Service) Handler() http.HandlerFunc {
 // Handler is the production entry point: the Session and the method are
 // checked first, then the Receipt Store is built from the environment.
 func Handler(w http.ResponseWriter, r *http.Request) {
-	session.Require(func(w http.ResponseWriter, r *http.Request) {
-		if rejectMethod(w, r) {
-			return
-		}
+	function.Production(func(r *http.Request) (http.HandlerFunc, error) {
 		d, err := deps.FromEnv(r.Context())
 		if err != nil {
-			httpjson.WriteError(w, http.StatusInternalServerError, "SERVER_MISCONFIGURED", err.Error())
-			return
+			return nil, err
 		}
-		Service{Store: d.Store, FolderID: d.FolderID}.serve(w, r)
+		return Service{Store: d.Store, FolderID: d.FolderID}.serve, nil
 	})(w, r)
 }
 
-func rejectMethod(w http.ResponseWriter, r *http.Request) bool {
-	if r.Method == http.MethodGet {
-		return false
-	}
-	w.Header().Set("Allow", "GET")
-	httpjson.WriteError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "receipt accepts GET only")
-	return true
-}
+// function is the `receipt` function's name and methods.
+var function = endpoint.Function{Name: "receipt", Methods: []string{http.MethodGet}}
 
 func (s Service) serve(w http.ResponseWriter, r *http.Request) {
-	if rejectMethod(w, r) {
+	if function.RejectMethod(w, r) {
 		return
 	}
 	ctx := r.Context()

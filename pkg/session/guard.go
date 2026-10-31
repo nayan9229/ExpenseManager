@@ -12,12 +12,9 @@ import (
 // Every function except `pair` wraps itself in it, and it runs before
 // anything else (in particular before any Google call), answering
 // 401 NOT_PAIRED without a valid Session. The verified Claims are put in the
-// request context for FromContext.
-//
-//	// pkg/expenses/handler.go
-//	func Handler(w http.ResponseWriter, r *http.Request) {
-//		session.Require(serve)(w, r)
-//	}
+// request context for FromContext. Production handlers reach it through
+// endpoint.Function.Production; the Service.Handler test seams call it
+// directly.
 func Require(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		secret, err := SecretFromEnv()

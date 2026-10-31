@@ -11,6 +11,7 @@ import (
 	"net/http"
 
 	"github.com/nayan9229/ExpenseManager/pkg/deps"
+	"github.com/nayan9229/ExpenseManager/pkg/endpoint"
 	"github.com/nayan9229/ExpenseManager/pkg/httpjson"
 	"github.com/nayan9229/ExpenseManager/pkg/ledger"
 	"github.com/nayan9229/ExpenseManager/pkg/receiptstore"
@@ -53,20 +54,11 @@ func (s Service) Handler() http.HandlerFunc {
 	return session.Require(s.serve)
 }
 
-// rejectMethod answers 405 for anything but POST and reports whether it did.
-// It runs before the environment is read, so a wrong method is never
-// mistaken for a misconfigured server.
-func rejectMethod(w http.ResponseWriter, r *http.Request) bool {
-	if r.Method == http.MethodPost {
-		return false
-	}
-	w.Header().Set("Allow", "POST")
-	httpjson.WriteError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "bootstrap accepts POST only")
-	return true
-}
+// function is the `bootstrap` function's name and methods.
+var function = endpoint.Function{Name: "bootstrap", Methods: []string{http.MethodPost}}
 
 func (s Service) serve(w http.ResponseWriter, r *http.Request) {
-	if rejectMethod(w, r) {
+	if function.RejectMethod(w, r) {
 		return
 	}
 	ctx := r.Context()
@@ -132,15 +124,11 @@ func googleFailed(w http.ResponseWriter, err error) {
 // Handler is the production entry point: the Session is checked first, then
 // the Google seams are built from the environment for this one request.
 func Handler(w http.ResponseWriter, r *http.Request) {
-	session.Require(func(w http.ResponseWriter, r *http.Request) {
-		if rejectMethod(w, r) {
-			return
-		}
+	function.Production(func(r *http.Request) (http.HandlerFunc, error) {
 		d, err := deps.FromEnv(r.Context())
 		if err != nil {
-			httpjson.WriteError(w, http.StatusInternalServerError, "SERVER_MISCONFIGURED", err.Error())
-			return
+			return nil, err
 		}
-		Service{Store: d.Store, Ledger: d.Ledger, FolderID: d.FolderID}.serve(w, r)
+		return Service{Store: d.Store, Ledger: d.Ledger, FolderID: d.FolderID}.serve, nil
 	})(w, r)
 }
