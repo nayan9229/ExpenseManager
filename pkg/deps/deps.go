@@ -32,7 +32,7 @@ func FromEnv(ctx context.Context) (Deps, error) {
 		return Deps{}, err
 	}
 	return Deps{
-		Store:    receiptstore.NewDrive(svc.Drive),
+		Store:    receiptstore.NewDrive(svc.Drive, svc.HTTP),
 		Ledger:   ledger.NewSheets(svc.Sheets, svc.Drive, cfg.DriveFolderID, cfg.SheetID),
 		FolderID: cfg.DriveFolderID,
 	}, nil

@@ -13,6 +13,7 @@ import { Gatekeeper } from './screens/Gatekeeper'
 import { ProfileSwitcher } from './screens/ProfileSwitcher'
 import { EditExpense } from './screens/EditExpense'
 import { QuickExpense } from './screens/QuickExpense'
+import { ScanReceipt } from './screens/ScanReceipt'
 import { SimpleMode } from './screens/SimpleMode'
 
 type Boot =
@@ -61,6 +62,7 @@ type View =
   | { kind: 'home'; justSaved: Expense | null; justDeleted?: Expense | null }
   /** `prefill` comes from a due Recurring Rule in Admin Mode. */
   | { kind: 'quickExpense'; voice?: VoiceResult; prefill?: Partial<ExpenseDraft> }
+  | { kind: 'scanReceipt' }
   /** Edit or delete one Expense; Admin Mode opens any Expense here. */
   | { kind: 'edit'; expense: Expense }
 
@@ -173,6 +175,17 @@ function PairedApp({ onUnpaired }: { onUnpaired: () => void }) {
       />
     )
   }
+  if (view.kind === 'scanReceipt') {
+    return (
+      <ScanReceipt
+        member={current}
+        model={model.data}
+        onSaved={(expense) => home({ justSaved: expense })}
+        onCancel={() => home()}
+        onUnpaired={onUnpaired}
+      />
+    )
+  }
   if (current.role === 'admin') {
     return (
       <AdminMode
@@ -185,6 +198,7 @@ function PairedApp({ onUnpaired }: { onUnpaired: () => void }) {
         justSaved={view.justSaved}
         justDeleted={view.justDeleted ?? null}
         onQuickExpense={(prefill) => setView({ kind: 'quickExpense', prefill })}
+        onScanReceipt={() => setView({ kind: 'scanReceipt' })}
         onEdit={(expense) => setView({ kind: 'edit', expense })}
         onSwitch={switchMember}
         onUnpaired={onUnpaired}
@@ -199,6 +213,7 @@ function PairedApp({ onUnpaired }: { onUnpaired: () => void }) {
       expenses={model.data.expenses}
       justSaved={view.justSaved}
       justDeleted={view.justDeleted}
+      onScanReceipt={() => setView({ kind: 'scanReceipt' })}
       onQuickExpense={() => setView({ kind: 'quickExpense' })}
       onVoice={(voice) => setView({ kind: 'quickExpense', voice })}
       onEdit={(expense) => setView({ kind: 'edit', expense })}

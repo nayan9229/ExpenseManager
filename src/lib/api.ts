@@ -10,12 +10,15 @@
 export class ApiError extends Error {
   readonly code: string
   readonly status: number
+  /** The whole error body, for envelopes that carry more than `{ code, message }` (409 DUPLICATE_RECEIPT). */
+  readonly body: unknown
 
-  constructor(status: number, code: string, message: string) {
+  constructor(status: number, code: string, message: string, body?: unknown) {
     super(message)
     this.name = 'ApiError'
     this.status = status
     this.code = code
+    this.body = body
   }
 }
 
@@ -38,6 +41,7 @@ async function readJson<T>(res: Response): Promise<T> {
     res.status,
     typeof envelope.code === 'string' ? envelope.code : 'HTTP_ERROR',
     typeof envelope.message === 'string' ? envelope.message : `Request failed with status ${res.status}`,
+    envelope,
   )
 }
 
@@ -136,7 +140,26 @@ export type Expense = {
 export type CreateExpenseInput = Pick<
   Expense,
   'id' | 'expenseDate' | 'loggedBy' | 'paidBy' | 'amount' | 'category' | 'merchantNote' | 'paymentMethod' | 'reimbursementStatus'
->
+> &
+  ReceiptFields
+
+/**
+ * The Receipt half of a create (ticket 06): the uploaded file under its
+ * temporary name, the SHA-256 of the original, and `force` to save past a
+ * DUPLICATE_RECEIPT ("Add anyway").
+ */
+export type ReceiptFields = {
+  driveFileId?: string
+  fileHash?: string
+  force?: boolean
+}
+
+/** The Expense that already holds this Receipt, when `err` is a 409 DUPLICATE_RECEIPT; otherwise null. */
+export function duplicateReceiptOf(err: unknown): Expense | null {
+  if (!(err instanceof ApiError) || err.status !== 409 || err.code !== 'DUPLICATE_RECEIPT') return null
+  const expense = (err.body as { expense?: unknown } | undefined)?.expense
+  return expense && typeof expense === 'object' ? (expense as Expense) : null
+}
 
 /** The answer to a create: the stored Expense, and whether it was already there. */
 export type CreateExpenseResult = {

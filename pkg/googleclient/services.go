@@ -3,6 +3,7 @@ package googleclient
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"sync"
 
 	"golang.org/x/oauth2"
@@ -16,6 +17,9 @@ import (
 type Services struct {
 	Drive  *drive.Service
 	Sheets *sheets.Service
+	// HTTP is the OAuth client both services use, for the raw requests the
+	// libraries do not cover (the resumable upload initiation).
+	HTTP *http.Client
 }
 
 // scopes match what SETUP_GUIDE.md mints the refresh token with. `drive.file`
@@ -48,7 +52,7 @@ func NewServices(ctx context.Context, cfg Config) (Services, error) {
 	if err != nil {
 		return Services{}, fmt.Errorf("googleclient: sheets: %w", err)
 	}
-	return Services{Drive: driveSvc, Sheets: sheetsSvc}, nil
+	return Services{Drive: driveSvc, Sheets: sheetsSvc, HTTP: client}, nil
 }
 
 func tokenSource(oc *oauth2.Config, refreshToken string) oauth2.TokenSource {

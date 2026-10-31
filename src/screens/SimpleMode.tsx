@@ -16,6 +16,7 @@ type Props = {
   justSaved: Expense | null
   /** The Expense just deleted, for the confirmation line. */
   justDeleted?: Expense | null
+  onScanReceipt: () => void
   onQuickExpense: () => void
   /** A voice attempt finished: open Quick Expense with its prefill or its one-line failure. */
   onVoice: (result: VoiceResult) => void
@@ -26,9 +27,8 @@ type Props = {
 
 /**
  * Simple Mode (GLOSSARY): greeting, the two giant cards, and the Member's
- * own last five Expenses, each one tappable to edit or delete it. Scan
- * Receipt is a placeholder until ticket 06; the mic shows only where the
- * browser can listen.
+ * own last five Expenses, each one tappable to edit or delete it. The mic
+ * shows only where the browser can listen.
  */
 export function SimpleMode({
   member,
@@ -37,6 +37,7 @@ export function SimpleMode({
   expenses,
   justSaved,
   justDeleted = null,
+  onScanReceipt,
   onQuickExpense,
   onVoice,
   onEdit,
@@ -55,15 +56,14 @@ export function SimpleMode({
       <div className="grid grid-cols-2 gap-4">
         <button
           type="button"
-          disabled
-          aria-describedby="scan-soon"
-          className="flex min-h-40 flex-col items-center justify-center gap-3 rounded-3xl bg-sand p-4 text-center text-xl font-bold opacity-60"
+          onClick={onScanReceipt}
+          className={
+            'flex min-h-40 flex-col items-center justify-center gap-3 rounded-3xl bg-mocha p-4 text-center text-xl font-bold text-warm-white ' +
+            'outline-none focus-visible:ring-4 focus-visible:ring-olive-sage active:scale-[0.98] transition-transform'
+          }
         >
           <Camera aria-hidden="true" className="size-12" strokeWidth={2} />
           Scan Receipt
-          <span id="scan-soon" className="text-base font-normal">
-            Coming soon
-          </span>
         </button>
         <button
           type="button"

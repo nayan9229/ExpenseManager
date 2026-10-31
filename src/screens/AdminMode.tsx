@@ -55,7 +55,7 @@ type Props = {
   onQuickExpense: (prefill?: Partial<ExpenseDraft>) => void
   /** Opens the existing edit screen: the Admin may edit any Expense. */
   onEdit: (expense: Expense) => void
-  /** Scan Receipt. Absent until ticket 06 wires it: the button shows "Coming soon". */
+  /** Opens Scan Receipt (ticket 06). Absent: the button shows "Coming soon". */
   onScanReceipt?: () => void
   /** The pairing modal (QR and Pair Code). Absent until ticket 12 wires it. */
   onPairDevice?: () => void

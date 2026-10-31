@@ -34,6 +34,10 @@ export default defineConfig({
       workbox: {
         // Precache the app shell: everything Vite emits plus the public icons.
         globPatterns: ['**/*.{js,css,html,ico,png,svg,webmanifest}'],
+        // The HEIC converter (~3 MB, ticket 06) is fetched only when a HEIC
+        // file is picked, so it stays out of the precache and is cached on
+        // first use instead (runtime rule below).
+        globIgnores: ['**/heic-to-*.js', 'receipt-upload-proof.html'],
         // SPA navigations fall back to the shell, but never for API routes.
         navigateFallback: '/index.html',
         navigateFallbackDenylist: [/^\/api\//],
@@ -44,11 +48,20 @@ export default defineConfig({
             urlPattern: ({ url }) => url.pathname.startsWith('/api/'),
             handler: 'NetworkOnly',
           },
+          {
+            urlPattern: ({ url }) => /^\/assets\/heic-to-[\w-]+\.js$/.test(url.pathname),
+            handler: 'CacheFirst',
+            options: { cacheName: 'heic-converter', expiration: { maxEntries: 2 } },
+          },
         ],
         cleanupOutdatedCaches: true,
       },
     }),
   ],
+  build: {
+    // The lazily-loaded HEIC converter is one 3.2 MB chunk by design.
+    chunkSizeWarningLimit: 3300,
+  },
   server: {
     // `vercel dev` starts Vite through `npm run dev` and expects it on the
     // port it hands over in $PORT; without this it never detects the server.
