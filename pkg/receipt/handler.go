@@ -94,6 +94,12 @@ func writeBytes(w http.ResponseWriter, mimeType string, body []byte) {
 
 func writeStoreError(w http.ResponseWriter, err error) {
 	w.Header().Set("Cache-Control", "no-store")
-	httpjson.WriteError(w, http.StatusBadGateway, "GOOGLE_ERROR", err.Error())
-	_ = errors.Is
+	switch {
+	// A file outside the Receipt Store answers exactly like a missing one,
+	// so the proxy does not even confirm that it exists.
+	case errors.Is(err, receiptstore.ErrNotFound), errors.Is(err, receiptstore.ErrNotAReceipt):
+		httpjson.WriteError(w, http.StatusNotFound, "RECEIPT_NOT_FOUND", "No Receipt has that ID")
+	default:
+		httpjson.WriteError(w, http.StatusBadGateway, "GOOGLE_ERROR", err.Error())
+	}
 }

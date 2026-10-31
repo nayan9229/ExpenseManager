@@ -110,3 +110,57 @@ func TestAnImageReceiptIsProxiedWithItsOwnContentType(t *testing.T) {
 		t.Errorf("X-Content-Type-Options = %q, want nosniff", got)
 	}
 }
+
+func TestAnUnknownIDIsNotFound(t *testing.T) {
+	f := newFixture(t)
+
+	a := get(t, f, http.MethodGet, "?id=no-such-file", pairedCookie(t))
+
+	if a.status != http.StatusNotFound || a.body["code"] != "RECEIPT_NOT_FOUND" {
+		t.Fatalf("got %d %s, want 404 RECEIPT_NOT_FOUND", a.status, a.raw)
+	}
+}
+
+// The proxy holds the Admin's Drive token: it must never become a way to
+// read a file that is not a Receipt.
+func TestAFileOutsideTheReceiptStoreIsNeverRead(t *testing.T) {
+	cases := map[string]func(f fixture) string{
+		"in someone else's folder": func(f fixture) string {
+			f.store.AddFile(receiptstore.FakeFile{ID: "tax-return-2025", ParentID: "admins-private-folder", Name: "tax.pdf", MIMEType: "application/pdf", Content: []byte("%PDF-1.7 secret")})
+			return "tax-return-2025"
+		},
+		"loose in the Household folder": func(f fixture) string {
+			f.store.AddFile(receiptstore.FakeFile{ID: "loose-1", ParentID: householdID, Name: "loose.jpg", MIMEType: "image/jpeg", Content: photo})
+			return "loose-1"
+		},
+		"a Receipt of another Household": func(f fixture) string {
+			month, _ := receiptstore.EnsureMonthFolder(context.Background(), f.store, "another-household", time.Date(2026, 10, 1, 0, 0, 0, 0, ledger.IST))
+			f.store.AddFile(receiptstore.FakeFile{ID: "other-receipt", ParentID: month.ID, Name: "x.jpg", MIMEType: "image/jpeg", Content: photo})
+			return "other-receipt"
+		},
+		"a folder of the Receipt Store": func(f fixture) string {
+			month, _ := receiptstore.EnsureMonthFolder(context.Background(), f.store, householdID, time.Date(2026, 10, 1, 0, 0, 0, 0, ledger.IST))
+			return month.ID
+		},
+		"a trashed Receipt": func(f fixture) string {
+			return saveReceipt(t, f, receiptstore.FakeFile{ID: "binned", Name: "binned.jpg", MIMEType: "image/jpeg", Content: photo, Trashed: true})
+		},
+	}
+	for name, place := range cases {
+		t.Run(name, func(t *testing.T) {
+			f := newFixture(t)
+			id := place(f)
+
+			for _, query := range []string{"?id=" + id} {
+				a := get(t, f, http.MethodGet, query, pairedCookie(t))
+
+				if a.status != http.StatusNotFound || a.body["code"] != "RECEIPT_NOT_FOUND" {
+					t.Errorf("%s: got %d %s, want 404 RECEIPT_NOT_FOUND", query, a.status, a.raw)
+				}
+			}
+			if len(f.store.Downloads) != 0 {
+				t.Errorf("Drive was read: downloads %v", f.store.Downloads)
+			}
+		})
+	}
+}
