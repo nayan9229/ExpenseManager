@@ -59,7 +59,8 @@ func TestGeminiSendsTheReceiptInlineWithTheSchemaAndStorageOff(t *testing.T) {
 	g, got := geminiStandIn(t, http.StatusOK, okResponse)
 	photo := []byte("\xff\xd8\xff\xe0 pharmacy bill")
 
-	if _, err := g.Read(t.Context(), Receipt{Bytes: photo, MIMEType: "image/jpeg"}); err != nil {
+	categories := []string{"Groceries", "Petrol & Transport", "Other"}
+	if _, err := g.Read(t.Context(), Receipt{Bytes: photo, MIMEType: "image/jpeg", Categories: categories}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -79,8 +80,8 @@ func TestGeminiSendsTheReceiptInlineWithTheSchemaAndStorageOff(t *testing.T) {
 	if config["responseMimeType"] != "application/json" {
 		t.Errorf("responseMimeType = %v, want application/json", config["responseMimeType"])
 	}
-	if !reflect.DeepEqual(config["responseSchema"], roundTrip(ResponseSchema())) {
-		t.Errorf("responseSchema = %v\nwant %v", config["responseSchema"], ResponseSchema())
+	if !reflect.DeepEqual(config["responseSchema"], roundTrip(ResponseSchema(categories))) {
+		t.Errorf("responseSchema = %v\nwant %v", config["responseSchema"], ResponseSchema(categories))
 	}
 	if _, ok := config["thinkingConfig"]; ok {
 		t.Errorf("thinkingConfig sent; the spec leaves thinking at the model's default")
@@ -166,6 +167,53 @@ func TestGeminiRefusalsAreErrorsWithGooglesMessageAndNeverTheKey(t *testing.T) {
 	}
 	if strings.Contains(err.Error(), testKey) {
 		t.Errorf("err = %v leaks the API key", err)
+	}
+}
+
+func property(t *testing.T, schema map[string]any, name string) map[string]any {
+	t.Helper()
+	p, ok := schema["properties"].(map[string]any)[name].(map[string]any)
+	if !ok {
+		t.Fatalf("schema has no property %q", name)
+	}
+	return p
+}
+
+func TestTheCategoryEnumIsTheCategoriesGivenAndMayBeNull(t *testing.T) {
+	schema := ResponseSchema([]string{"Fuel", "Kirana"})
+
+	category := property(t, schema, "category")
+	if category["type"] != "STRING" || category["format"] != "enum" || category["nullable"] != true {
+		t.Errorf("category = %v, want a nullable STRING enum", category)
+	}
+	if !reflect.DeepEqual(category["enum"], []string{"Fuel", "Kirana"}) {
+		t.Errorf("category enum = %v, want the Categories given", category["enum"])
+	}
+
+	empty := property(t, ResponseSchema(nil), "category")
+	if _, ok := empty["enum"]; ok || empty["nullable"] != true {
+		t.Errorf("category with no Categories = %v, want a nullable STRING without an empty enum", empty)
+	}
+}
+
+func TestTheReceiptNumberIsANullableStringWithItsOwnConfidence(t *testing.T) {
+	schema := ResponseSchema([]string{"Other"})
+
+	if p := property(t, schema, "receiptNumber"); p["type"] != "STRING" || p["nullable"] != true {
+		t.Errorf("receiptNumber = %v, want a nullable STRING", p)
+	}
+	confidence := property(t, schema, "confidence")
+	if _, ok := confidence["properties"].(map[string]any)["receiptNumber"]; !ok {
+		t.Errorf("confidence = %v, want a receiptNumber score", confidence)
+	}
+	for _, list := range []any{schema["required"], confidence["required"]} {
+		found := false
+		for _, k := range list.([]string) {
+			found = found || k == "receiptNumber"
+		}
+		if !found {
+			t.Errorf("required %v does not list receiptNumber", list)
+		}
 	}
 }
 

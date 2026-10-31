@@ -21,10 +21,12 @@ type OCR interface {
 	Read(ctx context.Context, r Receipt) (Answer, error)
 }
 
-// Receipt is the file the model reads.
+// Receipt is the file the model reads, and the Household's Categories it
+// picks one from (the schema's Category enum).
 type Receipt struct {
-	Bytes    []byte
-	MIMEType string
+	Bytes      []byte
+	MIMEType   string
+	Categories []string
 }
 
 // Answer is the model's reply, before validation.

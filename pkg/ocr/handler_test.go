@@ -7,10 +7,12 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/nayan9229/ExpenseManager/pkg/ledger"
 	"github.com/nayan9229/ExpenseManager/pkg/ocr"
 	"github.com/nayan9229/ExpenseManager/pkg/receiptstore"
 	"github.com/nayan9229/ExpenseManager/pkg/session"
@@ -34,14 +36,31 @@ const pharmacyBill = `{
   "currency": "INR",
   "category": "Medical & Pharmacy",
   "paymentMethod": "UPI",
-  "confidence": {"merchant": 0.95, "expenseDate": 0.9, "totalAmount": 0.97, "category": 0.88, "paymentMethod": 0.4},
+  "receiptNumber": "004521/A",
+  "confidence": {"merchant": 0.95, "expenseDate": 0.9, "totalAmount": 0.97, "category": 0.88, "paymentMethod": 0.4, "receiptNumber": 0.55},
   "lineItemSummary": "paracetamol, cough syrup, bandages"
 }`
 
+// householdCategories are the Categories tab of the fixture's Ledger: the
+// eight seeds, in the Admin's order.
+var householdCategories = []string{
+	"Groceries & Vegetables", "Medical & Pharmacy", "Utilities & Bills", "School & Kids",
+	"Household & Help", "Dining & Outings", "Petrol & Transport", "Other",
+}
+
+func categoryRows(names ...string) [][]string {
+	rows := make([][]string, len(names))
+	for i, n := range names {
+		rows[i] = []string{n, "", "", "0", "all"}
+	}
+	return rows
+}
+
 type fixture struct {
-	store *receiptstore.Fake
-	model *ocr.Fake
-	srv   *httptest.Server
+	store  *receiptstore.Fake
+	ledger *ledger.Fake
+	model  *ocr.Fake
+	srv    *httptest.Server
 	// receiptID is a JPEG Receipt in Receipts/2026/10-October.
 	receiptID string
 }
@@ -49,10 +68,11 @@ type fixture struct {
 func newFixture(t *testing.T) *fixture {
 	t.Helper()
 	t.Setenv("JWT_SECRET", jwtSecret)
-	f := &fixture{store: receiptstore.NewFake(), model: ocr.NewFake()}
+	f := &fixture{store: receiptstore.NewFake(), ledger: ledger.NewFake(), model: ocr.NewFake()}
+	f.ledger.Seed(ledger.Categories, categoryRows(householdCategories...)...)
 	f.model.Answer = ocr.Answer{FinishReason: "STOP", Text: pharmacyBill, ModelVersion: "gemini-3.5-flash-lite"}
 	f.receiptID = f.addReceipt(t, "image/jpeg", photo, 0)
-	f.srv = httptest.NewServer(ocr.Service{Store: f.store, OCR: f.model, FolderID: householdID}.Handler())
+	f.srv = httptest.NewServer(ocr.Service{Store: f.store, Ledger: f.ledger, OCR: f.model, FolderID: householdID}.Handler())
 	t.Cleanup(f.srv.Close)
 	return f
 }
@@ -129,8 +149,8 @@ func TestAReceiptIsReadIntoTheFieldsThatPrefillTheForm(t *testing.T) {
 	_ = json.Unmarshal([]byte(a.raw), &got)
 	want := map[string]any{
 		"merchant": "Apollo Pharmacy", "expenseDate": "2026-10-30", "totalAmount": 450.0, "taxAmount": 21.43,
-		"currency": "INR", "category": "Medical & Pharmacy", "paymentMethod": "UPI",
-		"confidence":      map[string]any{"merchant": 0.95, "expenseDate": 0.9, "totalAmount": 0.97, "category": 0.88, "paymentMethod": 0.4},
+		"currency": "INR", "category": "Medical & Pharmacy", "paymentMethod": "UPI", "receiptNumber": "004521/A",
+		"confidence":      map[string]any{"merchant": 0.95, "expenseDate": 0.9, "totalAmount": 0.97, "category": 0.88, "paymentMethod": 0.4, "receiptNumber": 0.55},
 		"lineItemSummary": "paracetamol, cough syrup, bandages",
 		"model":           "gemini-3.5-flash-lite",
 	}
@@ -143,6 +163,115 @@ func TestAReceiptIsReadIntoTheFieldsThatPrefillTheForm(t *testing.T) {
 	if seen := f.model.Seen[0]; !bytes.Equal(seen.Bytes, photo) || seen.MIMEType != "image/jpeg" {
 		t.Errorf("model got %q (%s), want the Receipt's bytes as image/jpeg", seen.Bytes, seen.MIMEType)
 	}
+}
+
+func TestTheModelIsOfferedExactlyTheHouseholdsCategories(t *testing.T) {
+	f := newFixture(t)
+	f.ledger.Seed(ledger.Categories, append(categoryRows("Fuel", "Kirana", " Doctor "), []string{}, []string{"", "🚫"})...)
+	f.model.Answer.Text = strings.Replace(pharmacyBill, `"Medical & Pharmacy"`, `"Doctor"`, 1)
+
+	a := f.read(t, f.receiptID)
+
+	if a.status != http.StatusOK {
+		t.Fatalf("status = %d body = %s, want 200", a.status, a.raw)
+	}
+	if got := f.model.Seen[0].Categories; !reflect.DeepEqual(got, []string{"Fuel", "Kirana", "Doctor"}) {
+		t.Errorf("model offered %q, want the Ledger's Categories", got)
+	}
+	if a.body["category"] != "Doctor" {
+		t.Errorf("category = %v, want Doctor", a.body["category"])
+	}
+}
+
+func TestACategoryTheLedgerDoesNotHaveIsNoCategory(t *testing.T) {
+	cases := map[string]string{
+		"not in the Ledger":        `"Pharmacy"`,
+		"a seed the Admin removed": `"School & Kids"`,
+		"null":                     `null`,
+	}
+	for name, category := range cases {
+		t.Run(name, func(t *testing.T) {
+			f := newFixture(t)
+			f.ledger.Seed(ledger.Categories, categoryRows("Groceries & Vegetables", "Medical & Pharmacy")...)
+			f.model.Answer.Text = strings.Replace(pharmacyBill, `"Medical & Pharmacy"`, category, 1)
+
+			a := f.read(t, f.receiptID)
+
+			if a.status != http.StatusOK {
+				t.Fatalf("status = %d body = %s, want 200", a.status, a.raw)
+			}
+			if v, ok := a.body["category"]; !ok || v != nil {
+				t.Errorf("category = %v (present %v), want null", v, ok)
+			}
+			if a.body["merchant"] != "Apollo Pharmacy" || a.body["totalAmount"] != 450.0 {
+				t.Errorf("body = %s, want the other fields kept", a.raw)
+			}
+		})
+	}
+}
+
+func TestTheCategoryIsGivenInTheLedgersSpelling(t *testing.T) {
+	f := newFixture(t)
+	f.model.Answer.Text = strings.Replace(pharmacyBill, `"Medical & Pharmacy"`, `" petrol & transport "`, 1)
+
+	a := f.read(t, f.receiptID)
+
+	if a.body["category"] != "Petrol & Transport" {
+		t.Errorf("category = %v, want Petrol & Transport", a.body["category"])
+	}
+}
+
+func TestTheReceiptNumberIsReadAsTextOrNull(t *testing.T) {
+	cases := []struct {
+		name, value string
+		want        any
+	}{
+		{"kept as printed, trimmed", `"  INV/26/0045  "`, "INV/26/0045"},
+		{"not on the Receipt", `null`, nil},
+		{"blank", `"  "`, nil},
+		{"longer than the Ledger takes", `"` + strings.Repeat("9", 41) + `"`, nil},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			f := newFixture(t)
+			f.model.Answer.Text = strings.Replace(pharmacyBill, `"004521/A"`, c.value, 1)
+
+			a := f.read(t, f.receiptID)
+
+			if a.status != http.StatusOK {
+				t.Fatalf("status = %d body = %s, want 200", a.status, a.raw)
+			}
+			if v, ok := a.body["receiptNumber"]; !ok || v != c.want {
+				t.Errorf("receiptNumber = %#v (present %v), want %#v", v, ok, c.want)
+			}
+		})
+	}
+}
+
+func TestTheLedgerIsReadBeforeTheModelIsCalled(t *testing.T) {
+	t.Run("missing", func(t *testing.T) {
+		f := newFixture(t)
+		f.ledger.Exists = false
+
+		a := f.read(t, f.receiptID)
+
+		if a.status != http.StatusNotFound || a.body["code"] != "LEDGER_NOT_FOUND" {
+			t.Errorf("status = %d body = %s, want 404 LEDGER_NOT_FOUND", a.status, a.raw)
+		}
+		if len(f.model.Seen) != 0 {
+			t.Errorf("the model was sent %d receipts, want none", len(f.model.Seen))
+		}
+	})
+	t.Run("Sheets fails", func(t *testing.T) {
+		f := newFixture(t)
+		f.ledger.Err = errors.New("sheets: 503 backend error")
+
+		a := f.read(t, f.receiptID)
+
+		if a.status != http.StatusBadGateway || a.body["code"] != "GOOGLE_ERROR" {
+			t.Errorf("status = %d body = %s, want 502 GOOGLE_ERROR", a.status, a.raw)
+		}
+	})
 }
 
 func jsonEqual(a, b any) bool {
@@ -159,15 +288,16 @@ func TestAnAnswerThatBreaksTheSchemaIs422WithWhatWasWrong(t *testing.T) {
 		{"cut off", `{"merchant": "Apollo Pharmacy", "expenseDate": "2026-10-30", "totalAm`, "not a JSON object"},
 		{"missing key", strings.Replace(pharmacyBill, `"taxAmount": 21.43,`, ``, 1), "missing taxAmount"},
 		{"extra key", strings.Replace(pharmacyBill, `"currency": "INR",`, `"currency": "INR", "gstin": "27AAACA",`, 1), "unexpected gstin"},
-		{"Category outside the seven", strings.Replace(pharmacyBill, `"Medical & Pharmacy"`, `"Pharmacy"`, 1), `category "Pharmacy"`},
-		{"null Category", strings.Replace(pharmacyBill, `"Medical & Pharmacy"`, `null`, 1), "category null"},
+		{"Category not a string", strings.Replace(pharmacyBill, `"Medical & Pharmacy"`, `7`, 1), "category is 7"},
+		{"Receipt Number not a string", strings.Replace(pharmacyBill, `"004521/A"`, `4521`, 1), "receiptNumber is 4521"},
+		{"confidence missing receiptNumber", strings.Replace(pharmacyBill, `, "receiptNumber": 0.55`, ``, 1), "confidence is missing receiptNumber"},
 		{"Payment Method outside the four", strings.Replace(pharmacyBill, `"UPI"`, `"GPay"`, 1), `paymentMethod "GPay"`},
 		{"amount as text", strings.Replace(pharmacyBill, `"totalAmount": 450`, `"totalAmount": "₹450"`, 1), "totalAmount"},
 		{"negative amount", strings.Replace(pharmacyBill, `"totalAmount": 450`, `"totalAmount": -450`, 1), "negative"},
 		{"date not ISO", strings.Replace(pharmacyBill, `"2026-10-30"`, `"30/10/2026"`, 1), "expenseDate"},
 		{"impossible date", strings.Replace(pharmacyBill, `"2026-10-30"`, `"2026-02-30"`, 1), "expenseDate"},
 		{"confidence above 1", strings.Replace(pharmacyBill, `"category": 0.88`, `"category": 88`, 1), "confidence.category"},
-		{"confidence missing a field", strings.Replace(pharmacyBill, `, "paymentMethod": 0.4`, ``, 1), "confidence is missing paymentMethod"},
+		{"confidence missing a field", strings.Replace(pharmacyBill, `"paymentMethod": 0.4, `, ``, 1), "confidence is missing paymentMethod"},
 		{"currency not a code", strings.Replace(pharmacyBill, `"INR"`, `"Rs."`, 1), "currency"},
 	}
 	for _, c := range cases {
@@ -190,8 +320,8 @@ func TestAnAnswerThatBreaksTheSchemaIs422WithWhatWasWrong(t *testing.T) {
 func TestNullsForWhatTheReceiptDoesNotShowAreAValidAnswer(t *testing.T) {
 	f := newFixture(t)
 	f.model.Answer = ocr.Answer{FinishReason: "STOP", Text: `{"merchant": null, "expenseDate": null, "totalAmount": null, "taxAmount": null,
-		"currency": null, "category": "Other", "paymentMethod": null,
-		"confidence": {"merchant": 0, "expenseDate": 0, "totalAmount": 0, "category": 0.1, "paymentMethod": 0},
+		"currency": null, "category": "Other", "paymentMethod": null, "receiptNumber": null,
+		"confidence": {"merchant": 0, "expenseDate": 0, "totalAmount": 0, "category": 0.1, "paymentMethod": 0, "receiptNumber": 0},
 		"lineItemSummary": ""}`}
 
 	a := f.read(t, f.receiptID)
@@ -199,7 +329,7 @@ func TestNullsForWhatTheReceiptDoesNotShowAreAValidAnswer(t *testing.T) {
 	if a.status != http.StatusOK {
 		t.Fatalf("status = %d body = %s, want 200", a.status, a.raw)
 	}
-	for _, k := range []string{"merchant", "expenseDate", "totalAmount", "taxAmount", "currency", "paymentMethod"} {
+	for _, k := range []string{"merchant", "expenseDate", "totalAmount", "taxAmount", "currency", "paymentMethod", "receiptNumber"} {
 		if v, ok := a.body[k]; !ok || v != nil {
 			t.Errorf("%s = %v (present %v), want null", k, v, ok)
 		}
