@@ -1,6 +1,6 @@
 import { ArrowLeft, Check, CircleAlert, Delete, TriangleAlert, Wallet } from 'lucide-react'
 import { useId, useState, type ReactNode } from 'react'
-import type { Category, Expense, Member, PaymentMethod } from '../lib/api'
+import type { Category, Expense, Member, PaymentMethod, ReimbursementStatus } from '../lib/api'
 import { addDays, dayLabel } from '../lib/istDate'
 import { pressKey, type Digit, type KeypadKey } from '../lib/keypad'
 import { draftProblem, findDuplicate, visibleCategories, type ExpenseDraft } from '../lib/quickExpense'
@@ -10,6 +10,11 @@ import { Button } from './Button'
 const PAYMENT_METHODS: PaymentMethod[] = ['UPI', 'Cash', 'Card', 'Bank Transfer']
 const DIGITS: Digit[] = [1, 2, 3, 4, 5, 6, 7, 8, 9]
 const ADDS = [50, 100, 500] as const
+const REIMBURSEMENTS: { value: ReimbursementStatus; label: string }[] = [
+  { value: 'none', label: 'Not owed' },
+  { value: 'pending', label: 'To be paid back' },
+  { value: 'done', label: 'Paid back' },
+]
 
 export type ExpenseFormProps = {
   /** Screen title, e.g. "Quick Expense" or "Edit Expense". */
@@ -35,6 +40,15 @@ export type ExpenseFormProps = {
   onCancel: () => void
   /** Rendered between the title and the amount (ticket 06 puts the Receipt here). */
   children?: ReactNode
+  /**
+   * Editing an existing Expense: a Paid By Member picker and a three-way
+   * Reimbursement control replace the "I paid from my own pocket" toggle.
+   */
+  editing?: boolean
+  /** Rendered below Save (the edit screen's Delete and its confirm step). */
+  footer?: ReactNode
+  /** Save's label while busy (the edit screen is busy deleting too). */
+  busyLabel?: string
 }
 
 /** `yesterday`, `today`, or `on Thu 29 Oct`, for a sentence. */
@@ -65,6 +79,9 @@ export function ExpenseForm({
   onSubmit,
   onCancel,
   children,
+  editing = false,
+  footer,
+  busyLabel = 'Saving…',
 }: ExpenseFormProps) {
   const [draft, setDraft] = useState<ExpenseDraft>(initial)
   const [attempted, setAttempted] = useState(false)
@@ -246,31 +263,73 @@ export function ExpenseForm({
         />
       </section>
 
-      <button
-        type="button"
-        role="switch"
-        aria-checked={ownPocket}
-        onClick={() => change({ reimbursementStatus: ownPocket ? 'none' : 'pending' })}
-        className={
-          'flex min-h-touch w-full items-center gap-4 rounded-2xl p-4 text-left text-lg font-semibold ' +
-          'outline-none focus-visible:ring-4 focus-visible:ring-olive-sage ' +
-          (ownPocket ? 'bg-mocha text-warm-white' : 'bg-sand text-mocha')
-        }
-      >
-        <Wallet aria-hidden="true" className="size-8 shrink-0" />
-        <span className="flex flex-col">
-          I paid from my own pocket
-          <span className="text-base font-normal">
-            {draft.reimbursementStatus === 'done'
-              ? 'Already paid back'
-              : ownPocket
-                ? 'The Admin will pay you back'
-                : 'Tap if the Household owes you this'}
+      {editing ? (
+        <>
+          <section className="flex flex-col gap-3">
+            <h2 className={sectionTitle}>Paid by</h2>
+            <div className="flex flex-wrap gap-3">
+              {members.map((m) => (
+                <button
+                  key={m.memberId}
+                  type="button"
+                  aria-pressed={draft.paidBy === m.memberId}
+                  onClick={() => change({ paidBy: m.memberId })}
+                  className={chip(draft.paidBy === m.memberId)}
+                >
+                  {m.name}
+                </button>
+              ))}
+              {!members.some((m) => m.memberId === draft.paidBy) && (
+                <button type="button" aria-pressed="true" className={chip(true)}>
+                  Unknown
+                </button>
+              )}
+            </div>
+          </section>
+          <section className="flex flex-col gap-3">
+            <h2 className={sectionTitle}>Pay back</h2>
+            <div className="flex flex-wrap gap-3">
+              {REIMBURSEMENTS.map((r) => (
+                <button
+                  key={r.value}
+                  type="button"
+                  aria-pressed={draft.reimbursementStatus === r.value}
+                  onClick={() => change({ reimbursementStatus: r.value })}
+                  className={chip(draft.reimbursementStatus === r.value)}
+                >
+                  {r.label}
+                </button>
+              ))}
+            </div>
+          </section>
+        </>
+      ) : (
+        <button
+          type="button"
+          role="switch"
+          aria-checked={ownPocket}
+          onClick={() => change({ reimbursementStatus: ownPocket ? 'none' : 'pending' })}
+          className={
+            'flex min-h-touch w-full items-center gap-4 rounded-2xl p-4 text-left text-lg font-semibold ' +
+            'outline-none focus-visible:ring-4 focus-visible:ring-olive-sage ' +
+            (ownPocket ? 'bg-mocha text-warm-white' : 'bg-sand text-mocha')
+          }
+        >
+          <Wallet aria-hidden="true" className="size-8 shrink-0" />
+          <span className="flex flex-col">
+            I paid from my own pocket
+            <span className="text-base font-normal">
+              {draft.reimbursementStatus === 'done'
+                ? 'Already paid back'
+                : ownPocket
+                  ? 'The Admin will pay you back'
+                  : 'Tap if the Household owes you this'}
+            </span>
           </span>
-        </span>
-      </button>
+        </button>
+      )}
 
-      {draft.paidBy !== member.memberId && (
+      {!editing && draft.paidBy !== member.memberId && (
         <p className="text-lg">Paid by {members.find((m) => m.memberId === draft.paidBy)?.name ?? 'Unknown'}</p>
       )}
 
@@ -303,8 +362,9 @@ export function ExpenseForm({
           )}
         </p>
         <Button icon={Check} onClick={save} disabled={busy} className="w-full">
-          {busy ? 'Saving…' : submitLabel}
+          {busy ? busyLabel : submitLabel}
         </Button>
+        {footer}
       </section>
     </main>
   )
