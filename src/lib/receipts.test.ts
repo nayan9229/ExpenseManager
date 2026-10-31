@@ -1,6 +1,6 @@
 import { IDBKeyRange, indexedDB } from 'fake-indexeddb'
 import { afterEach, describe, expect, test } from 'vitest'
-import { MAX_THUMBNAILS, getThumbnail, loadReceiptView } from './receipts'
+import { MAX_THUMBNAILS, getThumbnail, loadReceiptView, receiptNumberLine } from './receipts'
 import { ExpenseDb } from './db'
 
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 1, 2, 3])
@@ -216,5 +216,18 @@ describe('loadReceiptView', () => {
     })
 
     await expect(loadReceiptView('gone', DRIVE_VIEW, { db, fetchImpl: api.fetchImpl })).rejects.toMatchObject({ status: 404, code: 'RECEIPT_NOT_FOUND' })
+  })
+})
+
+describe('receiptNumberLine', () => {
+  test('is "No." and the Receipt Number as printed', () => {
+    expect(receiptNumberLine({ receiptNumber: '004521/A' })).toBe('No. 004521/A')
+    expect(receiptNumberLine({ receiptNumber: '  INV 77 ' })).toBe('No. INV 77')
+  })
+
+  test('is nothing when there is no Receipt Number', () => {
+    expect(receiptNumberLine({ receiptNumber: '' })).toBeNull()
+    expect(receiptNumberLine({ receiptNumber: '   ' })).toBeNull()
+    expect(receiptNumberLine({})).toBeNull()
   })
 })

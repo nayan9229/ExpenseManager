@@ -8,6 +8,7 @@ import { ReceiptLightbox } from '../components/ReceiptLightbox'
 import { ReceiptThumb } from '../components/ReceiptThumb'
 import { VoiceEntry, type VoiceResult } from '../components/VoiceEntry'
 import type { Category, Expense, Member } from '../lib/api'
+import { receiptNumberLine } from '../lib/receipts'
 import { dismissInstallHint, installHintDismissed } from '../lib/device'
 import { canEdit } from '../lib/editExpense'
 import { currentInstallPlatform, useInstallPrompt } from '../lib/installPrompt'
@@ -149,6 +150,7 @@ export function SimpleMode({
           fileId={viewing.driveFileId}
           driveViewUrl={viewing.driveViewUrl}
           title={`Receipt for ${formatRupees(viewing.amount)}, ${viewing.category}`}
+          subtitle={receiptNumberLine(viewing)}
           onClose={() => setViewing(null)}
         />
       )}

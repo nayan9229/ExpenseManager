@@ -22,6 +22,7 @@ import { Button } from '../components/Button'
 import { OfflineQueuePanel } from '../components/OfflineQueuePanel'
 import { UpdateBanner } from '../components/UpdateBanner'
 import { ApiError, runBootstrap, type Category, type Expense, type Member, type ReadModel } from '../lib/api'
+import { receiptNumberLine } from '../lib/receipts'
 import { markPaidBack, useMonthModel, usePendingReimbursements } from '../lib/adminData'
 import {
   breakdown,
@@ -568,6 +569,7 @@ function ExpenseSummary({
           <span className="shrink-0 text-base">{dayLabel(expense.expenseDate, today)}</span>
         </span>
         <span className="truncate text-base">{expense.merchantNote || expense.category}</span>
+        {receiptNumberLine(expense) && <span className="truncate text-base">{receiptNumberLine(expense)}</span>}
         <span className="text-base">
           {expense.paidBy === expense.loggedBy ? `By ${name(expense.loggedBy)}` : `Logged by ${name(expense.loggedBy)}, paid by ${name(expense.paidBy)}`}
         </span>
