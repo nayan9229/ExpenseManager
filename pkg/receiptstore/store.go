@@ -32,7 +32,31 @@ type Store interface {
 	// Rename gives a file its final name and, when AddParent is set, moves
 	// it from RemoveParent into AddParent in the same call.
 	Rename(ctx context.Context, r Rename) (File, error)
+
+	// Download reads a file's bytes (`files.get?alt=media`) with the
+	// server's token. More than limit bytes is ErrTooLarge, so a caller
+	// never holds more than it can send on; ErrNotFound for an unknown ID.
+	Download(ctx context.Context, id string, limit int64) ([]byte, error)
+
+	// Thumbnail fetches Drive's generated thumbnail of f (its
+	// ThumbnailLink, which only a credentialed request may read).
+	// ErrNoThumbnail when Drive has not made one.
+	Thumbnail(ctx context.Context, f File) (Image, error)
 }
+
+// ErrNoThumbnail is returned by Thumbnail when the file has no
+// ThumbnailLink yet (Drive makes them shortly after an upload).
+var ErrNoThumbnail = errors.New("receiptstore: Drive has no thumbnail for the file")
+
+// Image is a thumbnail's bytes and their MIME type.
+type Image struct {
+	Bytes    []byte
+	MIMEType string
+}
+
+// ErrTooLarge is returned by Download when a file has more bytes than the
+// caller's limit.
+var ErrTooLarge = errors.New("receiptstore: the file is larger than the limit")
 
 // ErrNotFound is returned by File and Rename for an unknown file ID.
 var ErrNotFound = errors.New("receiptstore: file not found")
@@ -64,10 +88,15 @@ type File struct {
 	Name     string
 	MIMEType string
 	// Parents holds the one parent folder ID (Drive allows one).
-	Parents     []string
+	Parents []string
+	// WebViewLink opens the file in Drive's own viewer (needs a Google
+	// login with access: the Admin's way out for oversize Receipts).
 	WebViewLink string
-	Size        int64
-	Trashed     bool
+	// ThumbnailLink is Drive's short-lived generated thumbnail; it needs a
+	// credentialed fetch and is blank until Drive has made one.
+	ThumbnailLink string
+	Size          int64
+	Trashed       bool
 }
 
 // Rename is a name change, optionally with a move.

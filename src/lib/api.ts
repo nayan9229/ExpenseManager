@@ -29,7 +29,7 @@ export type SessionState = {
 
 type ErrorEnvelope = { code?: unknown; message?: unknown }
 
-async function readJson<T>(res: Response): Promise<T> {
+export async function readJson<T>(res: Response): Promise<T> {
   if (res.ok) return (await res.json()) as T
   let envelope: ErrorEnvelope = {}
   try {
@@ -71,6 +71,39 @@ export async function pairDevice(accessCode: string, fetchImpl: typeof fetch = f
   })
   const body = await readJson<{ paired?: unknown }>(res)
   return { paired: body.paired === true }
+}
+
+/**
+ * Pairs this device with a Pair Code (typed in the Gatekeeper, or the
+ * `pairToken` from the Admin's QR link). Same Session as the Access Code; a
+ * stale or wrong code rejects with `WRONG_PAIR_CODE` after the delay.
+ */
+export async function pairWithCode(pairCode: string, fetchImpl: typeof fetch = fetch): Promise<SessionState> {
+  const res = await fetchImpl('/api/auth', {
+    method: 'POST',
+    headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+    credentials: 'same-origin',
+    body: JSON.stringify({ pairCode }),
+  })
+  const body = await readJson<{ paired?: unknown }>(res)
+  return { paired: body.paired === true }
+}
+
+/** What `pair-token` returns: the current Pair Code, the QR link carrying it, and when it stops working (RFC 3339). */
+export type PairToken = { pairCode: string; url: string; expiresAt: string }
+
+/** Asks `pair-token` for the code the Admin's pairing modal shows. */
+export async function getPairToken(fetchImpl: typeof fetch = fetch): Promise<PairToken> {
+  const res = await fetchImpl('/api/pair-token', {
+    method: 'GET',
+    headers: { Accept: 'application/json' },
+    credentials: 'same-origin',
+  })
+  const body = await readJson<Partial<Record<keyof PairToken, unknown>>>(res)
+  if (typeof body.pairCode !== 'string' || typeof body.url !== 'string' || typeof body.expiresAt !== 'string' || !body.pairCode) {
+    throw new ApiError(res.status, 'BAD_RESPONSE', 'The server sent no Pair Code', body)
+  }
+  return { pairCode: body.pairCode, url: body.url, expiresAt: body.expiresAt }
 }
 
 /** A Member's permission tier (GLOSSARY: Role). */

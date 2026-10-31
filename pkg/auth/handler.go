@@ -3,10 +3,8 @@
 // Session; ADR-0002).
 //
 // GET answers `{ "paired": bool }` from the cookie alone. POST takes the
-// Household Access Code and, when it matches, issues the year-long Session.
-// Pair Tokens (`pairToken` from a QR link or typed as a Pair Code) are the
-// second input the spec lists; they arrive with ticket 12 and plug into
-// `pair` below next to the Access Code branch.
+// Household Access Code, a typed Pair Code, or a Pair Token from a QR link
+// and, when it matches, issues the year-long Session.
 package auth
 
 import (
@@ -19,6 +17,7 @@ import (
 	"time"
 
 	"github.com/nayan9229/ExpenseManager/pkg/httpjson"
+	"github.com/nayan9229/ExpenseManager/pkg/paircode"
 	"github.com/nayan9229/ExpenseManager/pkg/session"
 )
 
@@ -27,10 +26,11 @@ type SessionState struct {
 	Paired bool `json:"paired"`
 }
 
-// PairRequest is the POST body. Exactly one Pairing input is used; ticket 12
-// adds `pairToken` beside `accessCode`.
+// PairRequest is the POST body. Exactly one Pairing input is used: a
+// non-empty `pairCode` wins over `accessCode`.
 type PairRequest struct {
 	AccessCode string `json:"accessCode"`
+	PairCode   string `json:"pairCode"`
 }
 
 // minAccessCodeLength is the documented floor (.env.example). A deployment
@@ -68,27 +68,40 @@ func getSessionState(w http.ResponseWriter, r *http.Request) {
 	httpjson.Write(w, http.StatusOK, SessionState{Paired: err == nil})
 }
 
-// pair checks the Access Code and issues a Session on a match.
+// pair checks one Pairing input and issues a Session on a match: a Pair
+// Token from the QR link (`?pairToken=` on the request), a typed Pair Code
+// (`pairCode` in the body), or the Household Access Code (`accessCode`).
+// Every miss sleeps the same 500ms; every hit gets the same cookie.
 func pair(w http.ResponseWriter, r *http.Request) {
 	secret, err := session.SecretFromEnv()
 	if err != nil {
 		httpjson.WriteError(w, http.StatusInternalServerError, "SERVER_MISCONFIGURED", err.Error())
 		return
 	}
-	expected, err := accessCodeFromEnv()
-	if err != nil {
-		httpjson.WriteError(w, http.StatusInternalServerError, "SERVER_MISCONFIGURED", err.Error())
-		return
-	}
 	var body PairRequest
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&body); err != nil {
-		httpjson.WriteError(w, http.StatusBadRequest, "BAD_REQUEST", "body must be JSON like {\"accessCode\": \"...\"}")
+	if token := r.URL.Query().Get("pairToken"); token != "" {
+		body.PairCode = token
+	} else if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&body); err != nil {
+		httpjson.WriteError(w, http.StatusBadRequest, "BAD_REQUEST", "body must be JSON like {\"accessCode\": \"...\"} or {\"pairCode\": \"...\"}")
 		return
 	}
-	if !codesMatch(body.AccessCode, expected) {
-		time.Sleep(failedAttemptDelay)
-		httpjson.WriteError(w, http.StatusUnauthorized, "WRONG_ACCESS_CODE", "That code didn't work")
-		return
+	if body.PairCode != "" {
+		if !paircode.Verify(secret, body.PairCode, time.Now()) {
+			time.Sleep(failedAttemptDelay)
+			httpjson.WriteError(w, http.StatusUnauthorized, "WRONG_PAIR_CODE", "That code didn't work")
+			return
+		}
+	} else {
+		expected, err := accessCodeFromEnv()
+		if err != nil {
+			httpjson.WriteError(w, http.StatusInternalServerError, "SERVER_MISCONFIGURED", err.Error())
+			return
+		}
+		if !codesMatch(body.AccessCode, expected) {
+			time.Sleep(failedAttemptDelay)
+			httpjson.WriteError(w, http.StatusUnauthorized, "WRONG_ACCESS_CODE", "That code didn't work")
+			return
+		}
 	}
 	if _, err := session.Issue(w, secret, time.Now()); err != nil {
 		httpjson.WriteError(w, http.StatusInternalServerError, "SESSION_FAILED", "could not issue a Session")

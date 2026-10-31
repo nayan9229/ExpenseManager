@@ -1,6 +1,9 @@
 import { Camera, CircleCheck, Keyboard, Pencil, Trash2, Users } from 'lucide-react'
+import { useState } from 'react'
 import { Button } from '../components/Button'
 import { NEEDS_ATTENTION, OfflineQueuePanel, QueueBadge, SAVED_ON_PHONE } from '../components/OfflineQueuePanel'
+import { ReceiptLightbox } from '../components/ReceiptLightbox'
+import { ReceiptThumb } from '../components/ReceiptThumb'
 import { VoiceEntry, type VoiceResult } from '../components/VoiceEntry'
 import type { Category, Expense, Member } from '../lib/api'
 import { canEdit } from '../lib/editExpense'
@@ -51,6 +54,7 @@ export function SimpleMode({
   const mine = lastFive(expenses, member.memberId)
   const queue = useOfflineQueue()
   const waiting = waitingStates(queue)
+  const [viewing, setViewing] = useState<Expense | null>(null)
 
   return (
     <main className="mx-auto flex min-h-dvh max-w-md flex-col gap-8 px-5 py-10">
@@ -121,6 +125,7 @@ export function SimpleMode({
                 today={today}
                 waiting={waiting.get(e.id)}
                 onEdit={canEdit(member, e) ? () => onEdit(e) : undefined}
+                onViewReceipt={() => setViewing(e)}
               />
             ))}
           </ul>
@@ -130,6 +135,15 @@ export function SimpleMode({
       <Button icon={Users} variant="secondary" onClick={onSwitch} className="mt-auto w-full">
         Switch Member
       </Button>
+
+      {viewing && (
+        <ReceiptLightbox
+          fileId={viewing.driveFileId}
+          driveViewUrl={viewing.driveViewUrl}
+          title={`Receipt for ${formatRupees(viewing.amount)}, ${viewing.category}`}
+          onClose={() => setViewing(null)}
+        />
+      )}
     </main>
   )
 }
@@ -142,6 +156,7 @@ function ExpenseRow({
   today,
   waiting,
   onEdit,
+  onViewReceipt,
 }: {
   expense: Expense
   category: Category | undefined
@@ -152,17 +167,22 @@ function ExpenseRow({
   waiting?: QueueState | undefined
   /** Absent when this Member may not change it. */
   onEdit?: () => void
+  /** Opens the ReceiptLightbox; only used when the Expense has a Receipt. */
+  onViewReceipt: () => void
 }) {
   const paidBy = expense.paidBy !== member.memberId ? (members.find((m) => m.memberId === expense.paidBy)?.name ?? 'Unknown') : null
   const body = (
     <>
-      <span
-        role="img"
-        aria-label={expense.category}
-        className="flex size-14 shrink-0 items-center justify-center rounded-full bg-warm-white text-3xl"
-      >
-        {category?.emoji ?? '📦'}
-      </span>
+      {/* With a Receipt, its thumbnail beside the row is the picture; the emoji would crowd the amount. */}
+      {!expense.driveFileId && (
+        <span
+          role="img"
+          aria-label={expense.category}
+          className="flex size-14 shrink-0 items-center justify-center rounded-full bg-warm-white text-3xl"
+        >
+          {category?.emoji ?? '📦'}
+        </span>
+      )}
       <div className="flex min-w-0 flex-1 flex-col">
         <p className="flex items-baseline justify-between gap-3">
           <span className="text-xl font-bold tabular-nums">{formatRupees(expense.amount)}</span>
@@ -182,9 +202,16 @@ function ExpenseRow({
       {onEdit && <Pencil aria-hidden="true" className="size-7 shrink-0" />}
     </>
   )
-  const row = 'flex min-h-touch w-full items-center gap-4 rounded-2xl bg-sand p-4 text-left'
+  const row = 'flex min-h-touch w-full min-w-0 flex-1 items-center gap-4 rounded-2xl bg-sand p-4 text-left'
   return (
-    <li>
+    <li className="flex items-stretch gap-3">
+      {expense.driveFileId && (
+        <ReceiptThumb
+          fileId={expense.driveFileId}
+          label={`View the Receipt for ${formatRupees(expense.amount)}, ${expense.category}`}
+          onOpen={onViewReceipt}
+        />
+      )}
       {onEdit ? (
         <button
           type="button"
