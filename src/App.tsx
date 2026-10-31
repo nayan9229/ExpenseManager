@@ -7,6 +7,7 @@ import { forgetMember, rememberMember, rememberedMemberId } from './lib/device'
 import { useReadModel } from './lib/readModel'
 import { Gatekeeper } from './screens/Gatekeeper'
 import { ProfileSwitcher } from './screens/ProfileSwitcher'
+import { EditExpense } from './screens/EditExpense'
 import { QuickExpense } from './screens/QuickExpense'
 import { SimpleMode } from './screens/SimpleMode'
 
@@ -52,7 +53,11 @@ export default function App() {
   }
 }
 
-type View = { kind: 'home'; justSaved: Expense | null } | { kind: 'quickExpense'; voice?: VoiceResult }
+type View =
+  | { kind: 'home'; justSaved: Expense | null; justDeleted?: Expense | null }
+  | { kind: 'quickExpense'; voice?: VoiceResult }
+  /** Edit or delete one Expense; Admin Mode (ticket 11) opens any Expense here. */
+  | { kind: 'edit'; expense: Expense }
 
 /**
  * A paired device: Bootstrap once, load the read model, then either the
@@ -91,6 +96,19 @@ function PairedApp({ onUnpaired }: { onUnpaired: () => void }) {
       />
     )
   }
+  if (view.kind === 'edit') {
+    return (
+      <EditExpense
+        member={current}
+        model={model.data}
+        expense={view.expense}
+        onSaved={(expense) => setView({ kind: 'home', justSaved: expense })}
+        onDeleted={(expense) => setView({ kind: 'home', justSaved: null, justDeleted: expense })}
+        onCancel={() => setView({ kind: 'home', justSaved: null })}
+        onUnpaired={onUnpaired}
+      />
+    )
+  }
   if (view.kind === 'quickExpense') {
     return (
       <QuickExpense
@@ -111,8 +129,10 @@ function PairedApp({ onUnpaired }: { onUnpaired: () => void }) {
       categories={model.data.categories}
       expenses={model.data.expenses}
       justSaved={view.justSaved}
+      justDeleted={view.justDeleted}
       onQuickExpense={() => setView({ kind: 'quickExpense' })}
       onVoice={(voice) => setView({ kind: 'quickExpense', voice })}
+      onEdit={(expense) => setView({ kind: 'edit', expense })}
       onSwitch={() => {
         forgetMember()
         setMemberId(null)

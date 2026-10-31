@@ -1,7 +1,8 @@
-import { Camera, CircleCheck, Keyboard, Users } from 'lucide-react'
+import { Camera, CircleCheck, Keyboard, Pencil, Trash2, Users } from 'lucide-react'
 import { Button } from '../components/Button'
 import { VoiceEntry, type VoiceResult } from '../components/VoiceEntry'
 import type { Category, Expense, Member } from '../lib/api'
+import { canEdit } from '../lib/editExpense'
 import { dayLabel, istToday } from '../lib/istDate'
 import { lastFive } from '../lib/quickExpense'
 import { formatRupees } from '../lib/rupees'
@@ -13,19 +14,34 @@ type Props = {
   expenses: Expense[]
   /** The Expense just saved, for the confirmation line. */
   justSaved: Expense | null
+  /** The Expense just deleted, for the confirmation line. */
+  justDeleted?: Expense | null
   onQuickExpense: () => void
   /** A voice attempt finished: open Quick Expense with its prefill or its one-line failure. */
   onVoice: (result: VoiceResult) => void
+  /** Opens an Expense for edit or delete. */
+  onEdit: (expense: Expense) => void
   onSwitch: () => void
 }
 
 /**
  * Simple Mode (GLOSSARY): greeting, the two giant cards, and the Member's
- * own last five Expenses. Scan Receipt is a placeholder until ticket 06;
- * the mic shows only where the browser can listen; ticket 05 makes each
- * Expense tappable.
+ * own last five Expenses, each one tappable to edit or delete it. Scan
+ * Receipt is a placeholder until ticket 06; the mic shows only where the
+ * browser can listen.
  */
-export function SimpleMode({ member, members, categories, expenses, justSaved, onQuickExpense, onVoice, onSwitch }: Props) {
+export function SimpleMode({
+  member,
+  members,
+  categories,
+  expenses,
+  justSaved,
+  justDeleted = null,
+  onQuickExpense,
+  onVoice,
+  onEdit,
+  onSwitch,
+}: Props) {
   const today = istToday()
   const mine = lastFive(expenses, member.memberId)
 
@@ -71,16 +87,31 @@ export function SimpleMode({ member, members, categories, expenses, justSaved, o
             Saved {formatRupees(justSaved.amount)} for {justSaved.category}.
           </span>
         )}
+        {!justSaved && justDeleted && (
+          <span className="flex items-center gap-2">
+            <Trash2 aria-hidden="true" className="size-7 shrink-0 text-terracotta" />
+            Deleted {formatRupees(justDeleted.amount)} for {justDeleted.category}.
+          </span>
+        )}
       </p>
 
       <section className="flex flex-col gap-3">
         <h2 className="text-xl font-bold">Your last five</h2>
+        {mine.length > 0 && <p className="text-lg">Tap one to fix or delete it.</p>}
         {mine.length === 0 ? (
           <p className="rounded-2xl bg-sand p-4 text-lg">Nothing logged in the last 90 days. Tap Quick Expense to add one.</p>
         ) : (
           <ul className="flex flex-col gap-3">
             {mine.map((e) => (
-              <ExpenseRow key={e.id} expense={e} category={categories.find((c) => c.name === e.category)} members={members} member={member} today={today} />
+              <ExpenseRow
+                key={e.id}
+                expense={e}
+                category={categories.find((c) => c.name === e.category)}
+                members={members}
+                member={member}
+                today={today}
+                onEdit={canEdit(member, e) ? () => onEdit(e) : undefined}
+              />
             ))}
           </ul>
         )}
@@ -99,16 +130,19 @@ function ExpenseRow({
   members,
   member,
   today,
+  onEdit,
 }: {
   expense: Expense
   category: Category | undefined
   members: Member[]
   member: Member
   today: string
+  /** Absent when this Member may not change it. */
+  onEdit?: () => void
 }) {
   const paidBy = expense.paidBy !== member.memberId ? (members.find((m) => m.memberId === expense.paidBy)?.name ?? 'Unknown') : null
-  return (
-    <li className="flex min-h-touch items-center gap-4 rounded-2xl bg-sand p-4">
+  const body = (
+    <>
       <span
         role="img"
         aria-label={expense.category}
@@ -131,6 +165,24 @@ function ExpenseRow({
           </p>
         )}
       </div>
+      {onEdit && <Pencil aria-hidden="true" className="size-7 shrink-0" />}
+    </>
+  )
+  const row = 'flex min-h-touch w-full items-center gap-4 rounded-2xl bg-sand p-4 text-left'
+  return (
+    <li>
+      {onEdit ? (
+        <button
+          type="button"
+          onClick={onEdit}
+          aria-label={`Edit ${formatRupees(expense.amount)} for ${expense.category}, ${dayLabel(expense.expenseDate, today)}`}
+          className={row + ' outline-none focus-visible:ring-4 focus-visible:ring-olive-sage active:scale-[0.98] transition-transform'}
+        >
+          {body}
+        </button>
+      ) : (
+        <div className={row}>{body}</div>
+      )}
     </li>
   )
 }
