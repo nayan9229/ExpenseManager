@@ -4,12 +4,14 @@ import { Button } from './components/Button'
 import type { VoiceResult } from './components/VoiceEntry'
 import { ApiError, getSessionState, type Expense } from './lib/api'
 import { forgetMember, rememberMember, rememberedMemberId } from './lib/device'
+import { takePairToken } from './lib/installPrompt'
 import { backgroundTimer, memberAfterAdmin, startingMember } from './lib/adminLock'
 import { monthOf, type Month } from './lib/month'
 import type { ExpenseDraft } from './lib/quickExpense'
 import { useReadModel } from './lib/readModel'
 import { AdminMode } from './screens/AdminMode'
 import { Gatekeeper } from './screens/Gatekeeper'
+import { PairDevice } from './screens/PairDevice'
 import { ProfileSwitcher } from './screens/ProfileSwitcher'
 import { EditExpense } from './screens/EditExpense'
 import { QuickExpense } from './screens/QuickExpense'
@@ -34,6 +36,8 @@ export default function App() {
     setBoot({ status: 'checking' })
     try {
       const { paired } = await getSessionState()
+      // Already paired: a QR link's pairToken has nothing to do; drop it from the address.
+      if (paired) takePairToken()
       setBoot({ status: paired ? 'paired' : 'unpaired' })
     } catch {
       // The server did not answer (offline, or a platform error). Not the
@@ -83,6 +87,8 @@ function PairedApp({ onUnpaired }: { onUnpaired: () => void }) {
   const [adminId, setAdminId] = useState<string | null>(null)
   const [adminView, setAdminView] = useState<{ month: Month; filter: string | null }>(() => ({ month: monthOf(new Date()), filter: null }))
   const [view, setView] = useState<View>({ kind: 'home', justSaved: null })
+  /** The Admin's pairing modal, drawn over Admin Mode; closed whenever Admin Mode closes. */
+  const [pairOpen, setPairOpen] = useState(false)
 
   const unpaired = model.error instanceof ApiError && model.error.status === 401
   useEffect(() => {
@@ -106,6 +112,7 @@ function PairedApp({ onUnpaired }: { onUnpaired: () => void }) {
       } else if (timer.visible(Date.now())) {
         const back = memberAfterAdmin(membersRef.current ?? [], lastNonAdminId)
         setAdminId(null)
+        setPairOpen(false)
         setMemberId(back?.memberId ?? null)
         if (back) rememberMember(back.memberId)
         setView({ kind: 'home', justSaved: null })
@@ -146,6 +153,7 @@ function PairedApp({ onUnpaired }: { onUnpaired: () => void }) {
   const switchMember = () => {
     forgetMember()
     setAdminId(null)
+    setPairOpen(false)
     setMemberId(null)
     home()
   }
@@ -188,21 +196,25 @@ function PairedApp({ onUnpaired }: { onUnpaired: () => void }) {
   }
   if (current.role === 'admin') {
     return (
-      <AdminMode
-        member={current}
-        model={model.data}
-        month={adminView.month}
-        onMonth={(month) => setAdminView((v) => ({ ...v, month }))}
-        filter={adminView.filter}
-        onFilter={(filter) => setAdminView((v) => ({ ...v, filter }))}
-        justSaved={view.justSaved}
-        justDeleted={view.justDeleted ?? null}
-        onQuickExpense={(prefill) => setView({ kind: 'quickExpense', prefill })}
-        onScanReceipt={() => setView({ kind: 'scanReceipt' })}
-        onEdit={(expense) => setView({ kind: 'edit', expense })}
-        onSwitch={switchMember}
-        onUnpaired={onUnpaired}
-      />
+      <>
+        <AdminMode
+          member={current}
+          model={model.data}
+          month={adminView.month}
+          onMonth={(month) => setAdminView((v) => ({ ...v, month }))}
+          filter={adminView.filter}
+          onFilter={(filter) => setAdminView((v) => ({ ...v, filter }))}
+          justSaved={view.justSaved}
+          justDeleted={view.justDeleted ?? null}
+          onQuickExpense={(prefill) => setView({ kind: 'quickExpense', prefill })}
+          onScanReceipt={() => setView({ kind: 'scanReceipt' })}
+          onEdit={(expense) => setView({ kind: 'edit', expense })}
+          onPairDevice={() => setPairOpen(true)}
+          onSwitch={switchMember}
+          onUnpaired={onUnpaired}
+        />
+        {pairOpen && <PairDevice onClose={() => setPairOpen(false)} onUnpaired={onUnpaired} />}
+      </>
     )
   }
   return (
