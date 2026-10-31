@@ -5,10 +5,10 @@
  * file ID so the last five render offline.
  */
 import { ApiError } from './api'
-import { thumbnailDb, type CachedThumbnail, type ThumbnailDb } from './thumbnailDb'
+import { appDb, type CachedThumbnail, type ExpenseDb } from './db'
 
 export type ReceiptDeps = {
-  db?: ThumbnailDb
+  db?: ExpenseDb
   fetchImpl?: typeof fetch
   now?: () => number
 }
@@ -47,7 +47,7 @@ async function errorOf(res: Response): Promise<ApiError> {
  * TypeError when offline and not cached).
  */
 export async function getThumbnail(fileId: string, deps: ReceiptDeps = {}): Promise<CachedThumbnail | null> {
-  const db = deps.db ?? thumbnailDb()
+  const db = deps.db ?? appDb()
   const cached = await db.thumbnails.get(fileId)
   if (cached) return cached
   const res = await (deps.fetchImpl ?? fetch)(receiptUrl(fileId, { thumb: true }), { credentials: 'same-origin' })

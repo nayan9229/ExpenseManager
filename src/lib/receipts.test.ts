@@ -1,7 +1,7 @@
 import { IDBKeyRange, indexedDB } from 'fake-indexeddb'
 import { afterEach, describe, expect, test } from 'vitest'
 import { MAX_THUMBNAILS, getThumbnail, loadReceiptView } from './receipts'
-import { ThumbnailDb } from './thumbnailDb'
+import { ExpenseDb } from './db'
 
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 1, 2, 3])
 
@@ -40,9 +40,9 @@ function fakeReceiptApi(script: Record<string, Answer>) {
 }
 
 let n = 0
-const dbs: ThumbnailDb[] = []
+const dbs: ExpenseDb[] = []
 function freshDb() {
-  const db = new ThumbnailDb(`receipt-thumbnails-test-${++n}`, { indexedDB, IDBKeyRange })
+  const db = new ExpenseDb(`receipts-test-${++n}`, { indexedDB, IDBKeyRange }, `receipts-test-legacy-${n}`)
   dbs.push(db)
   return db
 }
