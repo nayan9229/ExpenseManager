@@ -150,24 +150,35 @@ export type DueRule = {
 }
 
 /**
- * The "Due this month, not logged" card: Recurring Rules with no active
- * Expense in the same Category dated in `month`, soonest due first.
+ * The "Due this month, not logged" card: Recurring Rules not yet logged in
+ * `month`, soonest due first. A Rule is logged when an active Expense dated
+ * in the month has the Rule's Category and either its note contains the
+ * Rule's Title (any case) or its Amount equals the Rule's. Any other spend
+ * in the Category (stationery under School & Kids) does not count.
  */
 export function dueNotLogged(rules: RecurringRule[], expenses: Expense[], month: Month): DueRule[] {
-  const logged = new Set(
-    expenses.filter((e) => isActive(e) && monthOf(e.expenseDate) === month).map((e) => categoryKey(e.category)),
-  )
+  const inMonth = expenses.filter((e) => isActive(e) && monthOf(e.expenseDate) === month)
   const lastDay = daysIn(month)
   return rules
-    .filter((r) => !logged.has(categoryKey(r.category)))
+    .filter((rule) => !inMonth.some((e) => logs(e, rule)))
     .map((rule) => ({ rule, dueDate: `${month}-${String(Math.min(rule.dueDayOfMonth, lastDay)).padStart(2, '0')}` }))
     .sort((a, b) => (a.dueDate === b.dueDate ? 0 : a.dueDate < b.dueDate ? -1 : 1))
+}
+
+/** Whether an Expense is the month's instance of a Recurring Rule. */
+function logs(e: Expense, rule: RecurringRule): boolean {
+  if (categoryKey(e.category) !== categoryKey(rule.category)) return false
+  const title = rule.title.trim().toLowerCase()
+  if (title && e.merchantNote.toLowerCase().includes(title)) return true
+  return Math.round(e.amount * 100) === Math.round(rule.amount * 100)
 }
 
 /**
  * The Quick Expense prefill for one tap on a due Rule: its amount, its
  * Category in the Ledger's spelling (null if the Ledger no longer has it),
- * its title as the note, dated the due day or today if that is still ahead.
+ * its title as the note (so the saved Expense counts as logged in
+ * dueNotLogged even if the amount is corrected), dated the due day or today
+ * if that is still ahead.
  */
 export function prefillFromRule(rule: RecurringRule, dueDate: string, categories: Category[], today: string): Partial<ExpenseDraft> {
   return {

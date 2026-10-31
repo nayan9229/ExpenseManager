@@ -219,10 +219,12 @@ app picks up edits on its next refresh (within a minute, or on reopening).
 
 **Recurring_Rules** tab: `Rule_ID`, `Title`, `Amount`, `Category`,
 `Due_Day_Of_Month` (1 to 31; monthly only). Each rule appears in Admin Mode's
-"Due this month, not logged" card until an Expense in that Category is logged
-for the month; one tap prefills Quick Expense with its Amount, Category and
-Title. There are no
-reminders or push notifications.
+"Due this month, not logged" card until it is logged for the month: an
+Expense in that Category whose note contains the Title (any case) or whose
+Amount equals the rule's. Other spend in the Category does not count. One tap
+prefills Quick Expense with its Amount, Category and the Title as the note, so
+saving it as prefilled always counts. There are no reminders or push
+notifications.
 
 **Expenses** tab: `ID`, `Created_At`, `Updated_At`, `Expense_Date`,
 `Logged_By`, `Paid_By`, `Amount`, `Currency`, `Category`, `Merchant_Note`,

@@ -201,25 +201,43 @@ const rule = (ruleId: string, category: string, dueDayOfMonth: number, amount = 
 
 describe('dueNotLogged', () => {
   const rent = rule('rent', 'Household & Help', 5, 25000, 'Rent')
-  const fees = rule('fees', 'School & Kids', 10, 8000, 'School fee')
+  const fees = rule('fees', 'School & Kids', 10, 8000, 'School fees')
   const power = rule('power', 'Utilities & Bills', 31, 1800, 'Electricity')
 
-  test('lists the Rules with no Expense in their Category that month, by due date', () => {
-    const due = dueNotLogged([power, rent, fees], [expense({ category: 'School & Kids', expenseDate: '2026-10-02' })], '2026-10')
+  test('lists the Rules not logged that month, by due date', () => {
+    const due = dueNotLogged(
+      [power, rent, fees],
+      [expense({ category: 'School & Kids', expenseDate: '2026-10-02', amount: 8000, merchantNote: '' })],
+      '2026-10',
+    )
     expect(due.map((d) => [d.rule.ruleId, d.dueDate])).toEqual([
       ['rent', '2026-10-05'],
       ['power', '2026-10-31'],
     ])
   })
 
-  test('an Expense in the same Category in another month does not count', () => {
-    const due = dueNotLogged([rent], [expense({ category: 'Household & Help', expenseDate: '2026-09-05' })], '2026-10')
-    expect(due.map((d) => d.rule.ruleId)).toEqual(['rent'])
+  const cases: { name: string; e: Partial<Expense>; logged: boolean }[] = [
+    { name: 'stationery in School & Kids does not hide School fees', e: { amount: 350, merchantNote: 'stationery' }, logged: false },
+    { name: 'the same amount in the same Category counts', e: { amount: 8000, merchantNote: 'paid at the office' }, logged: true },
+    { name: 'a note containing the Title counts, whatever the amount', e: { amount: 7600, merchantNote: 'Term 2 school FEES (sibling discount)' }, logged: true },
+    { name: 'the Title in the note but another Category does not count', e: { category: 'Household & Help', amount: 7600, merchantNote: 'school fees' }, logged: false },
+    { name: 'the same amount in another Category does not count', e: { category: 'Groceries & Vegetables', amount: 8000, merchantNote: '' }, logged: false },
+    { name: 'the Category matches however it is spelt', e: { category: ' school & KIDS', amount: 8000 }, logged: true },
+    { name: 'a deleted Expense does not count', e: { amount: 8000, merchantNote: 'School fees', status: 'deleted' }, logged: false },
+    { name: 'a matching Expense in another month does not count', e: { expenseDate: '2026-09-10', amount: 8000, merchantNote: 'School fees' }, logged: false },
+  ]
+  test.each(cases)('$name', ({ e, logged }) => {
+    const due = dueNotLogged([fees], [expense({ category: 'School & Kids', expenseDate: '2026-10-08', ...e })], '2026-10')
+    expect(due.length === 0).toBe(logged)
   })
 
-  test('a deleted Expense does not count, and the Category matches however it is spelt', () => {
-    expect(dueNotLogged([rent], [expense({ category: 'Household & Help', expenseDate: '2026-10-05', status: 'deleted' })], '2026-10')).toHaveLength(1)
-    expect(dueNotLogged([rent], [expense({ category: ' household & help', expenseDate: '2026-10-07' })], '2026-10')).toEqual([])
+  test('a one-tap prefill, saved as it is, counts as logged', () => {
+    const categories = [category('School & Kids', 0)]
+    const prefill = prefillFromRule(fees, '2026-10-10', categories, '2026-10-31')
+    const saved = expense({ category: prefill.category!, merchantNote: prefill.note!, amount: prefill.amount!, expenseDate: prefill.expenseDate! })
+    expect(dueNotLogged([fees], [saved], '2026-10')).toEqual([])
+    // Even when the Admin corrects the amount before saving, the note still matches.
+    expect(dueNotLogged([fees], [{ ...saved, amount: 7999 }], '2026-10')).toEqual([])
   })
 
   test('a due day past the end of a short month falls on its last day', () => {
