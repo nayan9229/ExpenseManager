@@ -1,6 +1,6 @@
 import { IDBKeyRange, indexedDB } from 'fake-indexeddb'
 import { afterEach, describe, expect, test } from 'vitest'
-import { getThumbnail } from './receipts'
+import { MAX_THUMBNAILS, getThumbnail } from './receipts'
 import { ThumbnailDb } from './thumbnailDb'
 
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 1, 2, 3])
@@ -102,5 +102,23 @@ describe('getThumbnail', () => {
     const api = fakeReceiptApi({ '/api/receipt?id=x&thumb=1': { status: 401, json: { code: 'NOT_PAIRED', message: 'pair again' } } })
 
     await expect(getThumbnail('x', { db, fetchImpl: api.fetchImpl })).rejects.toMatchObject({ status: 401, code: 'NOT_PAIRED' })
+  })
+
+  test('keeps at most MAX_THUMBNAILS, dropping the oldest first', async () => {
+    const db = freshDb()
+    const script: Record<string, Answer> = {}
+    for (let i = 0; i <= MAX_THUMBNAILS; i++) {
+      script[`/api/receipt?id=f${i}&thumb=1`] = { status: 200, body: PNG, type: 'image/png', receiptType: 'image/jpeg' }
+    }
+    const api = fakeReceiptApi(script)
+    let clock = 1_000
+
+    for (let i = 0; i <= MAX_THUMBNAILS; i++) {
+      await getThumbnail(`f${i}`, { db, fetchImpl: api.fetchImpl, now: () => clock++ })
+    }
+
+    expect(await db.thumbnails.count()).toBe(MAX_THUMBNAILS)
+    expect(await db.thumbnails.get('f0')).toBeUndefined()
+    expect(await db.thumbnails.get(`f${MAX_THUMBNAILS}`)).toBeDefined()
   })
 })

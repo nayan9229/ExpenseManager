@@ -10,7 +10,14 @@ import { thumbnailDb, type CachedThumbnail, type ThumbnailDb } from './thumbnail
 export type ReceiptDeps = {
   db?: ThumbnailDb
   fetchImpl?: typeof fetch
+  now?: () => number
 }
+
+/**
+ * How many thumbnails the device keeps. The list shows five; the rest are
+ * Expenses scrolled past before. Drive thumbnails are tens of KB each.
+ */
+export const MAX_THUMBNAILS = 100
 
 /** The `receipt` function's URL for a file, or for its thumbnail. */
 export function receiptUrl(fileId: string, opts: { thumb?: boolean } = {}): string {
@@ -55,8 +62,12 @@ export async function getThumbnail(fileId: string, deps: ReceiptDeps = {}): Prom
     fileId,
     blob,
     receiptType: res.headers.get('X-Receipt-Type') ?? '',
-    savedAt: Date.now(),
+    savedAt: (deps.now ?? Date.now)(),
   }
-  await db.thumbnails.put(row)
+  await db.transaction('rw', db.thumbnails, async () => {
+    await db.thumbnails.put(row)
+    const extra = (await db.thumbnails.count()) - MAX_THUMBNAILS
+    if (extra > 0) await db.thumbnails.orderBy('savedAt').limit(extra).delete()
+  })
   return row
 }
