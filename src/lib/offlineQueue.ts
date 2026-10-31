@@ -37,6 +37,8 @@ export type OfflineQueueDeps = {
   /** The Drive PUT and the wait between upload tries (tests pass fakes). */
   put?: PutFile
   sleep?: (ms: number) => Promise<void>
+  /** Called after every Sync run, e.g. to refresh what the screens show. */
+  onSynced?: (report: SyncReport) => void
   /** How long Save waits for the server before saying "Saved on phone" (default 8 s). */
   saveWaitMs?: number
   /** True when the browser knows it has no network (`navigator.onLine` false): Save does not wait then. */
@@ -157,6 +159,7 @@ export class OfflineQueue {
   private readonly sleep: ((ms: number) => Promise<void>) | undefined
   private readonly saveWaitMs: number
   private readonly isOffline: () => boolean
+  private readonly onSynced: ((report: SyncReport) => void) | undefined
 
   constructor({
     db,
@@ -167,8 +170,10 @@ export class OfflineQueue {
     sleep,
     saveWaitMs = 8_000,
     isOffline = () => globalThis.navigator?.onLine === false,
+    onSynced,
   }: OfflineQueueDeps) {
     this.db = db
+    this.onSynced = onSynced
     this.saveWaitMs = saveWaitMs
     this.isOffline = isOffline
     this.put = put
@@ -181,6 +186,11 @@ export class OfflineQueue {
   /** Keeps the read model the server just answered, for the next start with no network. */
   async remember(model: ReadModel): Promise<void> {
     await this.db.cache.put({ key: 'readModel', model, savedAt: this.now().getTime() })
+  }
+
+  /** When the kept read model was loaded (ms since epoch), or null when none is kept. */
+  async rememberedAt(): Promise<number | null> {
+    return (await this.db.cache.get('readModel'))?.savedAt ?? null
   }
 
   /** Every queued item, oldest first. */
@@ -286,6 +296,7 @@ export class OfflineQueue {
         this.again = false
         report = await this.drain()
       } while (this.again)
+      this.onSynced?.(report)
       return report
     })().finally(() => {
       this.running = null

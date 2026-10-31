@@ -1,8 +1,15 @@
 import { QueryClient } from '@tanstack/react-query'
+import { IDBKeyRange, indexedDB } from 'fake-indexeddb'
 import { describe, expect, test } from 'vitest'
 import type { CreateExpenseInput, Expense, ReadModel } from './api'
+import { ExpenseDb } from './db'
 import type { DeviceStore } from './device'
-import { loadReadModel, readModelKey, saveExpense } from './readModel'
+import { OfflineQueue } from './offlineQueue'
+import { loadReadModel, offlineQueueKey, readModelKey, saveExpense, showKeptReadModel } from './readModel'
+
+let dbCount = 0
+const freshQueue = (fetchImpl?: typeof fetch) =>
+  new OfflineQueue({ db: new ExpenseDb(`rm-${++dbCount}`, { indexedDB, IDBKeyRange }), ...(fetchImpl ? { fetchImpl } : {}), retryLater: () => {} })
 
 const model = {
   expenses: [],
@@ -43,8 +50,8 @@ describe('loadReadModel', () => {
     const store = memoryStore()
     const server = fakeServer()
 
-    const first = await loadReadModel({ fetchImpl: server.fetchImpl, store })
-    const second = await loadReadModel({ fetchImpl: server.fetchImpl, store })
+    const first = await loadReadModel({ fetchImpl: server.fetchImpl, store, queue: null })
+    const second = await loadReadModel({ fetchImpl: server.fetchImpl, store, queue: null })
 
     expect(first).toEqual(model)
     expect(second).toEqual(model)
@@ -56,7 +63,7 @@ describe('loadReadModel', () => {
     store.setItem('fem.bootstrapped', '1')
     const server = fakeServer()
 
-    await loadReadModel({ fetchImpl: server.fetchImpl, store })
+    await loadReadModel({ fetchImpl: server.fetchImpl, store, queue: null })
 
     expect(server.calls).toEqual(['GET /api/expenses'])
   })
@@ -66,9 +73,28 @@ describe('loadReadModel', () => {
     store.setItem('fem.bootstrapped', '1')
     const server = fakeServer(404, { code: 'LEDGER_NOT_FOUND', message: 'run Bootstrap' })
 
-    await expect(loadReadModel({ fetchImpl: server.fetchImpl, store })).rejects.toMatchObject({ code: 'LEDGER_NOT_FOUND' })
+    await expect(loadReadModel({ fetchImpl: server.fetchImpl, store, queue: null })).rejects.toMatchObject({ code: 'LEDGER_NOT_FOUND' })
 
     expect(store.getItem('fem.bootstrapped')).toBeNull()
+  })
+
+  test('the loaded read model is kept on the device, so the next start shows it with no network', async () => {
+    const store = memoryStore()
+    store.setItem('fem.bootstrapped', '1')
+    const queue = freshQueue()
+    await loadReadModel({ fetchImpl: fakeServer().fetchImpl, store, queue })
+
+    const client = new QueryClient()
+    const shown = await showKeptReadModel(client, queue)
+
+    expect(shown).toBe(true)
+    expect(client.getQueryData(readModelKey)).toEqual(model)
+    // Stale at once, so it is refetched when the network is back.
+    expect(client.getQueryState(readModelKey)?.dataUpdatedAt).toBeLessThanOrEqual(Date.now())
+  })
+
+  test('a device that never loaded has nothing to show offline', async () => {
+    expect(await showKeptReadModel(new QueryClient(), freshQueue())).toBe(false)
   })
 })
 
@@ -96,43 +122,59 @@ describe('saveExpense', () => {
   }
   const older: Expense = { ...stored, id: 'older', expenseDate: '2026-10-29' }
 
-  function setup() {
+  async function setup({ offline = false } = {}) {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     const cached: ReadModel = { ...(model as ReadModel), expenses: [older] }
     client.setQueryData(readModelKey, cached)
     const calls: string[] = []
     const fetchImpl: typeof fetch = async (url, init) => {
+      if (offline) throw new TypeError('Failed to fetch')
       calls.push(`${init?.method ?? 'GET'} ${String(url)}`)
       if (init?.method === 'POST') return Response.json(stored, { status: 201 })
       return Response.json({ ...model, expenses: [stored, older] })
     }
-    return { client, calls, fetchImpl }
+    const queue = freshQueue(fetchImpl)
+    await queue.remember(cached)
+    return { client, calls, queue }
   }
 
   test('the saved Expense is in the cached read model at once, newest first', async () => {
-    const { client, fetchImpl } = setup()
+    const { client, queue } = await setup()
 
-    await saveExpense(input, { client, fetchImpl, refetch: false })
+    await saveExpense(input, { client, queue, refetch: false })
 
     const cached = client.getQueryData<ReadModel>(readModelKey)
     expect(cached?.expenses.map((e) => e.id)).toEqual([stored.id, 'older'])
   })
 
   test('a replayed save does not list the Expense twice', async () => {
-    const { client, fetchImpl } = setup()
+    const { client, queue } = await setup()
 
-    await saveExpense(input, { client, fetchImpl, refetch: false })
-    await saveExpense(input, { client, fetchImpl, refetch: false })
+    await saveExpense(input, { client, queue, refetch: false })
+    await saveExpense(input, { client, queue, refetch: false })
 
     const cached = client.getQueryData<ReadModel>(readModelKey)
     expect(cached?.expenses.map((e) => e.id)).toEqual([stored.id, 'older'])
   })
 
   test('marks the read model stale so the server copy is fetched again', async () => {
-    const { client, fetchImpl } = setup()
+    const { client, queue } = await setup()
 
-    await saveExpense(input, { client, fetchImpl, refetch: false })
+    await saveExpense(input, { client, queue, refetch: false })
 
     expect(client.getQueryState(readModelKey)?.isInvalidated).toBe(true)
+  })
+
+  test('with no signal the Expense is listed at once and marked as waiting on the phone', async () => {
+    const { client, queue } = await setup({ offline: true })
+
+    const saved = await saveExpense(input, { client, queue, refetch: false })
+
+    expect(saved.queued).toBe(true)
+    expect(client.getQueryData<ReadModel>(readModelKey)?.expenses.map((e) => e.id)).toEqual([stored.id, 'older'])
+    expect(client.getQueryData<{ expenseId: string; state: string }[]>(offlineQueueKey)?.map((i) => [i.expenseId, i.state])).toEqual([
+      [stored.id, 'pending'],
+    ])
+    expect(client.getQueryState(readModelKey)?.isInvalidated).toBe(false)
   })
 })
