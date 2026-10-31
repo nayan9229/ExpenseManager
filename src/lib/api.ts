@@ -29,7 +29,7 @@ export type SessionState = {
 
 type ErrorEnvelope = { code?: unknown; message?: unknown }
 
-async function readJson<T>(res: Response): Promise<T> {
+export async function readJson<T>(res: Response): Promise<T> {
   if (res.ok) return (await res.json()) as T
   let envelope: ErrorEnvelope = {}
   try {
