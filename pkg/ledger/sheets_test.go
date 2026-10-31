@@ -97,3 +97,15 @@ func TestColumnLettersCountLikeTheSheet(t *testing.T) {
 		}
 	}
 }
+
+func TestColumnsRepairAppendsAreFormattedAsTextToo(t *testing.T) {
+	reqs := textFormatRequests(7, Columns[Expenses], 16)
+
+	if len(reqs) != 1 {
+		t.Fatalf("got %d requests, want one for Receipt_Number", len(reqs))
+	}
+	r := reqs[0].RepeatCell.Range
+	if r.StartColumnIndex != 16 || r.EndColumnIndex != 17 || r.StartRowIndex != 1 || r.SheetId != 7 {
+		t.Errorf("range = %+v, want column Q below the header on sheet 7", r)
+	}
+}
