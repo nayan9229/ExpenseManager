@@ -64,3 +64,26 @@ func TestCellsBecomeTheTextTheAdminTyped(t *testing.T) {
 		}
 	}
 }
+
+func TestRowOneIsTheHeadersEmptyOrSomethingElse(t *testing.T) {
+	members := Columns[Members]
+	cases := []struct {
+		name string
+		row  []string
+		want HeaderState
+	}{
+		{"the headers", members, HeaderOK},
+		{"the headers with spaces", []string{" Member_ID ", "Name", "Role", "Default_Payment_Method", "PIN_Code", "Avatar_Color"}, HeaderOK},
+		{"the headers and an appended column", append(append([]string(nil), members...), "Notes"), HeaderOK},
+		{"no row at all", nil, HeaderEmpty},
+		{"blank cells", []string{"", "  "}, HeaderEmpty},
+		{"a renamed column", []string{"Member_ID", "Full Name", "Role", "Default_Payment_Method", "PIN_Code", "Avatar_Color"}, HeaderMismatched},
+		{"too few columns", members[:3], HeaderMismatched},
+		{"a data row in row 1", []string{"admin", "Admin", "admin", "UPI", "", "#6E7250"}, HeaderMismatched},
+	}
+	for _, c := range cases {
+		if got := CheckHeader(Members, c.row); got != c.want {
+			t.Errorf("%s: CheckHeader = %v, want %v", c.name, got, c.want)
+		}
+	}
+}

@@ -65,61 +65,117 @@ func (s *Sheets) Ensure(ctx context.Context) (Report, error) {
 	if err != nil {
 		return Report{}, err
 	}
-	report := Report{SpreadsheetID: id, URL: URLFor(id), SpreadsheetCreated: createdSpreadsheet, TabCreated: map[Tab]bool{}}
+	report := Report{
+		SpreadsheetID: id, URL: URLFor(id), SpreadsheetCreated: createdSpreadsheet,
+		TabCreated: map[Tab]bool{}, HeaderWritten: map[Tab]bool{}, HeaderMismatch: map[Tab][]string{},
+	}
 
-	ss, err := s.sheets.Spreadsheets.Get(id).Fields("sheets.properties(sheetId,title)").Context(ctx).Do()
+	ss, err := s.sheets.Spreadsheets.Get(id).Fields("sheets.properties(sheetId,title,gridProperties.frozenRowCount)").Context(ctx).Do()
 	if err != nil {
 		return Report{}, s.wrap("get spreadsheet", err)
 	}
-	existing := map[string]bool{}
+	existing := map[string]*sheets.SheetProperties{}
 	for _, sh := range ss.Sheets {
-		existing[sh.Properties.Title] = true
+		existing[sh.Properties.Title] = sh.Properties
 	}
-	var missing []Tab
-	var addSheets []*sheets.Request
+	var missing, found []Tab
+	var structural []*sheets.Request // AddSheet replies first, in `missing` order
 	for _, tab := range Tabs {
-		if existing[string(tab)] {
+		if existing[string(tab)] != nil {
+			found = append(found, tab)
 			continue
 		}
 		missing = append(missing, tab)
-		addSheets = append(addSheets, &sheets.Request{AddSheet: &sheets.AddSheetRequest{
+		structural = append(structural, &sheets.Request{AddSheet: &sheets.AddSheetRequest{
 			Properties: &sheets.SheetProperties{
 				Title:          string(tab),
 				GridProperties: &sheets.GridProperties{FrozenRowCount: 1},
 			},
 		}})
 	}
-	if len(missing) == 0 {
-		return report, nil
+	var headers []*sheets.ValueRange
+
+	// Repair the tabs that exist: freeze row 1, fill an empty row 1, and
+	// report (never overwrite) a row 1 that is something else.
+	if len(found) > 0 {
+		firstRows, err := s.firstRows(ctx, id, found)
+		if err != nil {
+			return Report{}, err
+		}
+		for _, tab := range found {
+			props := existing[string(tab)]
+			if props.GridProperties == nil || props.GridProperties.FrozenRowCount < 1 {
+				structural = append(structural, &sheets.Request{UpdateSheetProperties: &sheets.UpdateSheetPropertiesRequest{
+					Properties: &sheets.SheetProperties{SheetId: props.SheetId, GridProperties: &sheets.GridProperties{FrozenRowCount: 1}},
+					Fields:     "gridProperties.frozenRowCount",
+				}})
+			}
+			switch CheckHeader(tab, firstRows[tab]) {
+			case HeaderEmpty:
+				headers = append(headers, &sheets.ValueRange{Range: a1(tab, "A1"), Values: [][]any{toAny(Columns[tab])}})
+				report.HeaderWritten[tab] = true
+			case HeaderMismatched:
+				report.HeaderMismatch[tab] = firstRows[tab]
+			}
+		}
 	}
 
-	added, err := s.sheets.Spreadsheets.BatchUpdate(id, &sheets.BatchUpdateSpreadsheetRequest{Requests: addSheets}).Context(ctx).Do()
-	if err != nil {
-		return Report{}, s.wrap("add tabs", err)
-	}
 	var formats []*sheets.Request
-	var headers []*sheets.ValueRange
-	for i, tab := range missing {
-		sheetID := added.Replies[i].AddSheet.Properties.SheetId
-		formats = append(formats, formatRequests(sheetID, Columns[tab])...)
-		headers = append(headers, &sheets.ValueRange{Range: a1(tab, "A1"), Values: [][]any{toAny(Columns[tab])}})
-		report.TabCreated[tab] = true
+	if len(structural) > 0 {
+		added, err := s.sheets.Spreadsheets.BatchUpdate(id, &sheets.BatchUpdateSpreadsheetRequest{Requests: structural}).Context(ctx).Do()
+		if err != nil {
+			return Report{}, s.wrap("add tabs", err)
+		}
+		for i, tab := range missing {
+			sheetID := added.Replies[i].AddSheet.Properties.SheetId
+			formats = append(formats, formatRequests(sheetID, Columns[tab])...)
+			headers = append(headers, &sheets.ValueRange{Range: a1(tab, "A1"), Values: [][]any{toAny(Columns[tab])}})
+			report.TabCreated[tab] = true
+		}
 	}
-	if createdSpreadsheet && len(ss.Sheets) == 1 {
+	if len(missing) > 0 && createdSpreadsheet && len(ss.Sheets) == 1 {
 		// A spreadsheet Drive just created holds one empty default sheet;
 		// drop it so the Ledger has exactly the four tabs.
 		formats = append(formats, &sheets.Request{DeleteSheet: &sheets.DeleteSheetRequest{SheetId: ss.Sheets[0].Properties.SheetId}})
 	}
-	if _, err := s.sheets.Spreadsheets.BatchUpdate(id, &sheets.BatchUpdateSpreadsheetRequest{Requests: formats}).Context(ctx).Do(); err != nil {
-		return Report{}, s.wrap("format tabs", err)
+	if len(formats) > 0 {
+		if _, err := s.sheets.Spreadsheets.BatchUpdate(id, &sheets.BatchUpdateSpreadsheetRequest{Requests: formats}).Context(ctx).Do(); err != nil {
+			return Report{}, s.wrap("format tabs", err)
+		}
 	}
-	if _, err := s.sheets.Spreadsheets.Values.BatchUpdate(id, &sheets.BatchUpdateValuesRequest{
-		ValueInputOption: "RAW",
-		Data:             headers,
-	}).Context(ctx).Do(); err != nil {
-		return Report{}, s.wrap("write headers", err)
+	if len(headers) > 0 {
+		if _, err := s.sheets.Spreadsheets.Values.BatchUpdate(id, &sheets.BatchUpdateValuesRequest{
+			ValueInputOption: "RAW",
+			Data:             headers,
+		}).Context(ctx).Do(); err != nil {
+			return Report{}, s.wrap("write headers", err)
+		}
 	}
 	return report, nil
+}
+
+// firstRows reads row 1 of each tab in one round-trip.
+func (s *Sheets) firstRows(ctx context.Context, id string, tabs []Tab) (map[Tab][]string, error) {
+	ranges := make([]string, len(tabs))
+	for i, tab := range tabs {
+		ranges[i] = a1(tab, "1:1")
+	}
+	resp, err := s.sheets.Spreadsheets.Values.BatchGet(id).Ranges(ranges...).MajorDimension("ROWS").
+		ValueRenderOption("UNFORMATTED_VALUE").DateTimeRenderOption("FORMATTED_STRING").Context(ctx).Do()
+	if err != nil {
+		return nil, s.wrap("read headers", err)
+	}
+	out := map[Tab][]string{}
+	for i, tab := range tabs {
+		row := []string{}
+		if i < len(resp.ValueRanges) && len(resp.ValueRanges[i].Values) > 0 {
+			for _, cell := range resp.ValueRanges[i].Values[0] {
+				row = append(row, cellString(cell))
+			}
+		}
+		out[tab] = row
+	}
+	return out, nil
 }
 
 // formatRequests bolds the header and formats every non-numeric column of a

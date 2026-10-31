@@ -204,5 +204,12 @@ export function repairSummary(report: BootstrapReport): string[] {
     const [one, many] = ROW_NAMES[tab] ?? [`${tabName(tab)} row`, `${tabName(tab)} rows`]
     lines.push(`Added ${n} starter ${n === 1 ? one : many}.`)
   }
+  const headed = [...(report.headersWritten ?? [])].sort((a, b) => TAB_ORDER.indexOf(a) - TAB_ORDER.indexOf(b))
+  for (const tab of headed) lines.push(`Wrote the headers in row 1 of the ${tabName(tab)} tab.`)
   return lines.length > 0 ? lines : ['Nothing was missing. The Receipts folder, the Ledger and its four tabs are all there.']
+}
+
+/** What Repair found wrong but would not overwrite: the server's sentence for each tab. */
+export function repairWarnings(report: BootstrapReport): string[] {
+  return (report.headerMismatches ?? []).map((m) => m.message)
 }

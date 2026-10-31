@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest'
 import type { Category, Expense, Member, RecurringRule } from './api'
-import { breakdown, burnRates, dueNotLogged, mergeExpenses, paidByMember, prefillFromRule, reimbursableQueue, repairSummary } from './adminMode'
+import { breakdown, burnRates, dueNotLogged, mergeExpenses, paidByMember, prefillFromRule, reimbursableQueue, repairSummary, repairWarnings } from './adminMode'
 
 const category = (name: string, monthlyBudgetLimit: number, emoji = '📦'): Category => ({
   name,
@@ -286,5 +286,43 @@ describe('repairSummary', () => {
         seeded: seeded({ Members: 1, Categories: 7 }),
       }),
     ).toEqual(['Created a new Ledger with its four tabs.', 'Added 1 starter Member.', 'Added 7 starter Categories.'])
+  })
+
+  test('says which tabs got their headers back', () => {
+    expect(
+      repairSummary({
+        receiptsFolder: { id: 'f', created: false },
+        ledger: { id: 'l', created: false },
+        tabs: tabs(),
+        seeded: seeded(),
+        headersWritten: ['Recurring_Rules', 'Expenses'],
+        headerMismatches: [],
+      }),
+    ).toEqual(['Wrote the headers in row 1 of the Expenses tab.', 'Wrote the headers in row 1 of the Recurring Rules tab.'])
+  })
+})
+
+describe('repairWarnings', () => {
+  const report = {
+    receiptsFolder: { id: 'f', created: false },
+    ledger: { id: 'l', created: false },
+    tabs: {},
+    seeded: {},
+  }
+
+  test('a header Repair left alone is shown with the server message', () => {
+    const message = 'Row 1 of the Members tab is not the expected header. Repair left it alone.'
+    expect(
+      repairWarnings({
+        ...report,
+        headersWritten: [],
+        headerMismatches: [{ tab: 'Members', found: ['Member_ID', 'Full Name'], expected: ['Member_ID', 'Name'], message }],
+      }),
+    ).toEqual([message])
+  })
+
+  test('nothing to warn about, also from a server that predates the check', () => {
+    expect(repairWarnings({ ...report, headersWritten: [], headerMismatches: [] })).toEqual([])
+    expect(repairWarnings(report)).toEqual([])
   })
 })

@@ -32,6 +32,7 @@ import {
   prefillFromRule,
   reimbursableQueue,
   repairSummary,
+  repairWarnings,
   type Bar,
 } from '../lib/adminMode'
 import { dayLabel, istToday } from '../lib/istDate'
@@ -615,7 +616,11 @@ function MonthExpenses({
   )
 }
 
-type RepairState = { kind: 'idle' } | { kind: 'running' } | { kind: 'done'; lines: string[] } | { kind: 'failed'; message: string }
+type RepairState =
+  | { kind: 'idle' }
+  | { kind: 'running' }
+  | { kind: 'done'; lines: string[]; warnings: string[] }
+  | { kind: 'failed'; message: string }
 
 /** Repair: run Bootstrap again and say what it put back (user story 64). */
 function RepairButton({ onUnpaired }: { onUnpaired: () => void }) {
@@ -625,7 +630,7 @@ function RepairButton({ onUnpaired }: { onUnpaired: () => void }) {
     setState({ kind: 'running' })
     try {
       const report = await runBootstrap()
-      setState({ kind: 'done', lines: repairSummary(report) })
+      setState({ kind: 'done', lines: repairSummary(report), warnings: repairWarnings(report) })
       void queryClient.invalidateQueries({ queryKey: readModelKey })
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) return onUnpaired()
@@ -651,6 +656,12 @@ function RepairButton({ onUnpaired }: { onUnpaired: () => void }) {
               <li key={line} className="flex items-start gap-2">
                 <CircleCheck aria-hidden="true" className="mt-0.5 size-6 shrink-0 text-olive-sage" />
                 {line}
+              </li>
+            ))}
+            {state.warnings.map((warning) => (
+              <li key={warning} className="flex items-start gap-2">
+                <TriangleAlert aria-hidden="true" className="mt-0.5 size-6 shrink-0 text-terracotta" />
+                {warning}
               </li>
             ))}
           </ul>

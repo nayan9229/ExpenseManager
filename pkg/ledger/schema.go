@@ -9,6 +9,7 @@ package ledger
 
 import (
 	"context"
+	"strings"
 	"time"
 )
 
@@ -46,8 +47,10 @@ const SpreadsheetName = "Expenses_Database"
 // round-trips; callers batch by asking for several tabs at once.
 type Ledger interface {
 	// Ensure finds or creates the Ledger spreadsheet, then every missing tab
-	// with its header row written and frozen. Existing tabs are left alone,
-	// so running it twice changes nothing.
+	// with its header row written and frozen. An existing tab is repaired:
+	// row 1 is frozen, and an empty row 1 gets the headers; a non-empty row 1
+	// that is not the headers is left alone and reported. Running it twice
+	// changes nothing.
 	Ensure(ctx context.Context) (Report, error)
 	// Read returns the data rows (everything below the header) of each tab
 	// in one round-trip. Rows are padded to the tab's column count and blank
@@ -68,6 +71,43 @@ type Report struct {
 	SpreadsheetCreated bool
 	// TabCreated is true for a tab this call added, false for one it found.
 	TabCreated map[Tab]bool
+	// HeaderWritten is true for a found tab whose empty row 1 this call
+	// filled with the headers.
+	HeaderWritten map[Tab]bool
+	// HeaderMismatch holds row 1 of each found tab whose row 1 is neither
+	// empty nor the headers; Ensure did not touch it.
+	HeaderMismatch map[Tab][]string
+}
+
+// HeaderState is what row 1 of a found tab holds.
+type HeaderState int
+
+const (
+	// HeaderOK is the schema's header, perhaps followed by columns the Admin
+	// appended.
+	HeaderOK HeaderState = iota
+	// HeaderEmpty is a blank row 1: Ensure writes the headers.
+	HeaderEmpty
+	// HeaderMismatched is anything else: Ensure leaves it for the Admin.
+	HeaderMismatched
+)
+
+// CheckHeader compares row 1 of tab with Columns[tab], ignoring surrounding
+// spaces.
+func CheckHeader(tab Tab, row []string) HeaderState {
+	if strings.TrimSpace(strings.Join(row, "")) == "" {
+		return HeaderEmpty
+	}
+	want := Columns[tab]
+	if len(row) < len(want) {
+		return HeaderMismatched
+	}
+	for i, col := range want {
+		if strings.TrimSpace(row[i]) != col {
+			return HeaderMismatched
+		}
+	}
+	return HeaderOK
 }
 
 // Snapshot is what Read returns: the rows per requested tab plus the

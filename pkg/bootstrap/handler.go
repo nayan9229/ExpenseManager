@@ -8,7 +8,9 @@
 package bootstrap
 
 import (
+	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/nayan9229/ExpenseManager/pkg/deps"
 	"github.com/nayan9229/ExpenseManager/pkg/endpoint"
@@ -47,6 +49,30 @@ type Report struct {
 	// Seeded maps each tab name to the number of seed rows this run wrote;
 	// 0 means the tab already had rows (or has no seeds).
 	Seeded map[ledger.Tab]int `json:"seeded"`
+	// HeadersWritten lists the found tabs whose empty row 1 this run filled
+	// with the headers.
+	HeadersWritten []ledger.Tab `json:"headersWritten"`
+	// HeaderMismatches are the found tabs whose row 1 is not the headers.
+	// Bootstrap never overwrites them; the Admin fixes row 1 by hand.
+	HeaderMismatches []HeaderMismatch `json:"headerMismatches"`
+}
+
+// HeaderMismatch is one tab whose row 1 is not what the app reads.
+type HeaderMismatch struct {
+	Tab      ledger.Tab `json:"tab"`
+	Found    []string   `json:"found"`
+	Expected []string   `json:"expected"`
+	// Message is the sentence the Admin's Repair screen shows.
+	Message string `json:"message"`
+}
+
+func mismatchOf(tab ledger.Tab, found []string) HeaderMismatch {
+	expected := ledger.Columns[tab]
+	return HeaderMismatch{
+		Tab: tab, Found: found, Expected: expected,
+		Message: fmt.Sprintf("Row 1 of the %s tab is not the expected header, so the app may misread it. Repair left it alone; change row 1 to: %s.",
+			strings.ReplaceAll(string(tab), "_", " "), strings.Join(expected, ", ")),
+	}
 }
 
 // Handler is the guarded function: a valid Session first, then the work.
@@ -74,14 +100,22 @@ func (s Service) serve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	report := Report{
-		ReceiptsFolder: Item{ID: folder.ID, Created: folder.Created},
-		Ledger:         Item{ID: ensured.SpreadsheetID, URL: ensured.URL, Created: ensured.SpreadsheetCreated},
-		Tabs:           map[ledger.Tab]Item{},
-		Seeded:         map[ledger.Tab]int{},
+		ReceiptsFolder:   Item{ID: folder.ID, Created: folder.Created},
+		Ledger:           Item{ID: ensured.SpreadsheetID, URL: ensured.URL, Created: ensured.SpreadsheetCreated},
+		Tabs:             map[ledger.Tab]Item{},
+		Seeded:           map[ledger.Tab]int{},
+		HeadersWritten:   []ledger.Tab{},
+		HeaderMismatches: []HeaderMismatch{},
 	}
 	for _, tab := range ledger.Tabs {
 		report.Tabs[tab] = Item{Created: ensured.TabCreated[tab]}
 		report.Seeded[tab] = 0
+		if ensured.HeaderWritten[tab] {
+			report.HeadersWritten = append(report.HeadersWritten, tab)
+		}
+		if found, ok := ensured.HeaderMismatch[tab]; ok {
+			report.HeaderMismatches = append(report.HeaderMismatches, mismatchOf(tab, found))
+		}
 	}
 
 	snap, err := s.Ledger.Read(ctx, ledger.Members, ledger.Categories)

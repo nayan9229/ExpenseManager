@@ -233,7 +233,14 @@ export type BootstrapReport = {
   ledger: BootstrapItem
   tabs: Record<string, BootstrapItem>
   seeded: Record<string, number>
+  /** Found tabs whose empty row 1 got the headers. Absent from an older server. */
+  headersWritten?: string[]
+  /** Found tabs whose row 1 is not the headers; Bootstrap left them alone. */
+  headerMismatches?: HeaderMismatch[]
 }
+
+/** A tab whose row 1 is not what the app reads; `message` is for the Admin. */
+export type HeaderMismatch = { tab: string; found: string[]; expected: string[]; message: string }
 
 /**
  * Runs Bootstrap: ensures the Receipt Store and the Ledger exist with their

@@ -60,14 +60,29 @@ func (f *Fake) Ensure(context.Context) (Report, error) {
 	if f.Err != nil {
 		return Report{}, f.Err
 	}
-	report := Report{SpreadsheetID: FakeSpreadsheetID, URL: URLFor(FakeSpreadsheetID), TabCreated: map[Tab]bool{}}
+	report := Report{
+		SpreadsheetID: FakeSpreadsheetID, URL: URLFor(FakeSpreadsheetID),
+		TabCreated: map[Tab]bool{}, HeaderWritten: map[Tab]bool{}, HeaderMismatch: map[Tab][]string{},
+	}
 	if !f.Exists {
 		f.Exists = true
 		f.Writes++
 		report.SpreadsheetCreated = true
 	}
 	for _, tab := range Tabs {
-		if _, ok := f.tabs[tab]; ok {
+		if t, ok := f.tabs[tab]; ok {
+			if !t.Frozen {
+				t.Frozen = true
+				f.Writes++
+			}
+			switch CheckHeader(tab, t.Header) {
+			case HeaderEmpty:
+				t.Header = append([]string(nil), Columns[tab]...)
+				f.Writes++
+				report.HeaderWritten[tab] = true
+			case HeaderMismatched:
+				report.HeaderMismatch[tab] = append([]string(nil), t.Header...)
+			}
 			continue
 		}
 		f.tabs[tab] = &FakeTab{Header: append([]string(nil), Columns[tab]...), Frozen: true}
