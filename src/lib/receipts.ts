@@ -71,3 +71,40 @@ export async function getThumbnail(fileId: string, deps: ReceiptDeps = {}): Prom
   })
   return row
 }
+
+/** What the ReceiptLightbox shows. */
+export type ReceiptView =
+  /** A photo, whole. */
+  | { kind: 'image'; image: Blob }
+  /** A PDF: Drive's first-page thumbnail, and the Drive link to read the rest. */
+  | { kind: 'pdf'; thumb: Blob | null; driveUrl: string }
+  /** Over the 4 MB proxy cap (ADR-0003): the thumbnail plus "Open in Google Drive". */
+  | { kind: 'tooLarge'; thumb: Blob | null; driveUrl: string }
+  /** No network: the cached thumbnail is all there is. */
+  | { kind: 'offline'; thumb: Blob }
+
+/**
+ * Everything the lightbox needs for one Receipt. The cached thumbnail says
+ * whether it is a PDF before anything is downloaded; a photo is then
+ * fetched whole. `driveViewUrl` is the Expense's Drive link. Rejects with
+ * an ApiError (404, 401, 502) or, offline with no thumbnail cached, the
+ * network's TypeError.
+ */
+export async function loadReceiptView(fileId: string, driveViewUrl: string, deps: ReceiptDeps = {}): Promise<ReceiptView> {
+  const cached = await getThumbnail(fileId, deps).catch(() => null)
+  const thumb = cached?.blob ?? null
+  if (cached?.receiptType === PDF) return { kind: 'pdf', thumb, driveUrl: driveViewUrl }
+
+  const res = await (deps.fetchImpl ?? fetch)(receiptUrl(fileId), { credentials: 'same-origin' })
+  if (res.status === 413) {
+    const err = await errorOf(res)
+    const link = (err.body as { webViewLink?: unknown }).webViewLink
+    return { kind: 'tooLarge', thumb, driveUrl: typeof link === 'string' && link ? link : driveViewUrl }
+  }
+  if (!res.ok) throw await errorOf(res)
+  const body = await res.blob()
+  if (body.type === PDF) return { kind: 'pdf', thumb, driveUrl: driveViewUrl }
+  return { kind: 'image', image: body }
+}
+
+const PDF = 'application/pdf'

@@ -1,6 +1,6 @@
 import { IDBKeyRange, indexedDB } from 'fake-indexeddb'
 import { afterEach, describe, expect, test } from 'vitest'
-import { MAX_THUMBNAILS, getThumbnail } from './receipts'
+import { MAX_THUMBNAILS, getThumbnail, loadReceiptView } from './receipts'
 import { ThumbnailDb } from './thumbnailDb'
 
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 1, 2, 3])
@@ -120,5 +120,68 @@ describe('getThumbnail', () => {
     expect(await db.thumbnails.count()).toBe(MAX_THUMBNAILS)
     expect(await db.thumbnails.get('f0')).toBeUndefined()
     expect(await db.thumbnails.get(`f${MAX_THUMBNAILS}`)).toBeDefined()
+  })
+})
+
+const JPEG = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 9, 9, 9])
+const DRIVE_VIEW = 'https://drive.google.com/file/d/drive-file-1/view?usp=drivesdk'
+
+describe('loadReceiptView', () => {
+  test('a photo comes back whole, as the image the lightbox shows', async () => {
+    const db = freshDb()
+    const api = fakeReceiptApi({
+      '/api/receipt?id=drive-file-1&thumb=1': { status: 200, body: PNG, type: 'image/png', receiptType: 'image/jpeg' },
+      '/api/receipt?id=drive-file-1': { status: 200, body: JPEG, type: 'image/jpeg' },
+    })
+
+    const view = await loadReceiptView('drive-file-1', DRIVE_VIEW, { db, fetchImpl: api.fetchImpl })
+
+    expect(view.kind).toBe('image')
+    if (view.kind !== 'image') return
+    expect(view.image.type).toBe('image/jpeg')
+    expect(await bytesOf(view.image)).toEqual(JPEG)
+  })
+
+  test('a PDF shows its first-page thumbnail and the Drive link, without downloading the PDF', async () => {
+    const db = freshDb()
+    const api = fakeReceiptApi({
+      '/api/receipt?id=bill-1&thumb=1': { status: 200, body: PNG, type: 'image/png', receiptType: 'application/pdf' },
+    })
+
+    const view = await loadReceiptView('bill-1', DRIVE_VIEW, { db, fetchImpl: api.fetchImpl })
+
+    expect(view.kind).toBe('pdf')
+    if (view.kind !== 'pdf') return
+    expect(await bytesOf(view.thumb!)).toEqual(PNG)
+    expect(view.driveUrl).toBe(DRIVE_VIEW)
+    expect(api.requests).toEqual(['/api/receipt?id=bill-1&thumb=1'])
+  })
+
+  test('a PDF with no thumbnail yet is still recognised by what the proxy sends', async () => {
+    const db = freshDb()
+    const api = fakeReceiptApi({
+      '/api/receipt?id=bill-2&thumb=1': { status: 404, json: { code: 'NO_THUMBNAIL', message: 'not yet' } },
+      '/api/receipt?id=bill-2': { status: 200, body: new TextEncoder().encode('%PDF-1.7'), type: 'application/pdf' },
+    })
+
+    const view = await loadReceiptView('bill-2', DRIVE_VIEW, { db, fetchImpl: api.fetchImpl })
+
+    expect(view).toEqual({ kind: 'pdf', thumb: null, driveUrl: DRIVE_VIEW })
+  })
+
+  test('a Receipt over the 4 MB cap shows the thumbnail and the Drive link the proxy sent', async () => {
+    const db = freshDb()
+    const fromProxy = 'https://drive.google.com/file/d/big-1/view?usp=drivesdk'
+    const api = fakeReceiptApi({
+      '/api/receipt?id=big-1&thumb=1': { status: 200, body: PNG, type: 'image/png', receiptType: 'image/jpeg' },
+      '/api/receipt?id=big-1': { status: 413, json: { code: 'RECEIPT_TOO_LARGE', message: 'too large', webViewLink: fromProxy, size: 6_200_000 } },
+    })
+
+    const view = await loadReceiptView('big-1', '', { db, fetchImpl: api.fetchImpl })
+
+    expect(view.kind).toBe('tooLarge')
+    if (view.kind !== 'tooLarge') return
+    expect(view.driveUrl).toBe(fromProxy)
+    expect(await bytesOf(view.thumb!)).toEqual(PNG)
   })
 })
