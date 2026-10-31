@@ -259,7 +259,7 @@ banner "Family Expense Manager setup"
 
 # ── 1. Google Drive folder ───────────────────────────────────────────────
 stage "Google Drive: the Expense Manager folder"
-say "Everything the app stores (the Ledger sheet and the Receipts tree) lives in one Drive folder."
+say "Everything the app stores (the Ledger and the Receipts tree) lives in one Drive folder."
 open_url "https://drive.google.com/drive/my-drive"
 step "Create a folder named 'Expense Manager' (or open the one you already use), then open it."
 step "Copy the ID from the address bar: it is the part after /folders/ in"
@@ -341,14 +341,14 @@ ask_secret_required GOOGLE_REFRESH_TOKEN "Paste the refresh_token (hidden):"
   || warn "refresh tokens normally start with 1//; make sure you did not paste the access token"
 write_env GOOGLE_REFRESH_TOKEN "$GOOGLE_REFRESH_TOKEN"
 
-# ── 7. Sheet ID (optional) ───────────────────────────────────────────────
-stage "Google Sheets: Ledger spreadsheet ID (optional)"
+# ── 7. Ledger ID (optional) ───────────────────────────────────────────────
+stage "Ledger ID (optional)"
 say "Leave this blank: on the first pairing, Bootstrap creates 'Expenses_Database' inside the Drive folder."
-say "Fill it only if you already have a Ledger spreadsheet the app should use instead."
+say "Fill it only if you already have a Ledger the app should use instead."
 open_url "https://drive.google.com/drive/folders/$GOOGLE_DRIVE_FOLDER_ID"
-step "If a Ledger sheet already exists, open it and copy the ID from its URL: /spreadsheets/d/<THIS-IS-THE-ID>/edit"
+step "If a Ledger already exists, open it in Google Sheets and copy the ID from its URL: /spreadsheets/d/<THIS-IS-THE-ID>/edit"
 note "On a re-run, Enter keeps a previously saved ID; to clear one, edit $ENV_FILE."
-ask GOOGLE_SHEET_ID "Spreadsheet ID or URL (Enter to leave blank):"
+ask GOOGLE_SHEET_ID "Ledger ID or its Google Sheets URL (Enter to leave blank):"
 GOOGLE_SHEET_ID="${GOOGLE_SHEET_ID##*/spreadsheets/d/}"
 GOOGLE_SHEET_ID="${GOOGLE_SHEET_ID%%/*}"
 GOOGLE_SHEET_ID="${GOOGLE_SHEET_ID%%[?#]*}"

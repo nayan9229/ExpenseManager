@@ -107,7 +107,7 @@ Every variable is read by the Go functions on each request. Set them for
 | `GOOGLE_CLIENT_SECRET` | yes | The OAuth client secret. |
 | `GOOGLE_REFRESH_TOKEN` | yes | Long-lived refresh token (starts `1//`) for the Admin's account with the `drive` and `spreadsheets` scopes. |
 | `GOOGLE_DRIVE_FOLDER_ID` | yes | The Drive folder that holds the Ledger and the Receipt Store. |
-| `GOOGLE_SHEET_ID` | no | ID of an existing Ledger spreadsheet. Blank: Bootstrap finds or creates `Expenses_Database` inside the folder. |
+| `GOOGLE_SHEET_ID` | no | ID of an existing Ledger (the ID in its Google Sheets URL). Blank: Bootstrap finds or creates `Expenses_Database` inside the folder. |
 | `GEMINI_API_KEY` | for OCR | Gemini API key for Receipt OCR, on a project with billing enabled. |
 | `GEMINI_MODEL` | no | Gemini model ID; blank means `gemini-3.5-flash-lite`. `gemini-3.8-flash` is the higher-accuracy option; `gemini-2.5-*` is only served to projects that used it before. |
 
@@ -205,7 +205,7 @@ app picks up edits on its next refresh (within a minute, or on reopening).
   with a blank PIN cannot enter Admin Mode; the app says so. A PIN is optional
   for other Members (with one, their avatar asks for it). The PIN never leaves
   the server, only a hash of it. Anyone who can open the Ledger can read it,
-  so share the Sheet with nobody.
+  so share the Ledger with nobody.
 
 **Categories** tab: `Category_Name`, `Icon_Emoji`, `Color_Hex`,
 `Monthly_Budget_Limit`, `Visible_To_Roles`.
