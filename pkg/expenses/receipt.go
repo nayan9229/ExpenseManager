@@ -44,7 +44,8 @@ func (s Service) attachReceipt(w http.ResponseWriter, r *http.Request, req Creat
 		return false
 	}
 
-	if !req.Force && writeDuplicate(w, rows, hash, *expense) {
+	expense.FileHash = hash
+	if !req.Force && writeDuplicate(w, rows, *expense) {
 		return false
 	}
 
@@ -81,15 +82,17 @@ func (s Service) attachReceipt(w http.ResponseWriter, r *http.Request, req Creat
 	if expense.DriveViewURL == "" {
 		expense.DriveViewURL = "https://drive.google.com/file/d/" + renamed.ID + "/view"
 	}
-	expense.FileHash = hash
 	return true
 }
 
-// duplicateOf finds the active Expense that already holds this Receipt:
-// the same File_Hash (the same file), or the same Receipt Number and Amount
-// (another photo of the same Receipt). Receipt Numbers match ignoring case
-// and spaces; a blank one matches nothing.
-func duplicateOf(rows [][]string, hash string, e ledger.Expense) (ledger.Expense, bool) {
+// duplicateOf finds the active Expense that already holds the Receipt of
+// e, the Expense about to be created: the same File_Hash (the same file),
+// or the same Receipt Number and Amount (another photo of the same
+// Receipt). Receipt Numbers match ignoring case and spaces; a blank
+// File_Hash or Receipt Number matches nothing, so an Expense saved without
+// a Receipt file is checked on its Receipt Number alone.
+func duplicateOf(rows [][]string, e ledger.Expense) (ledger.Expense, bool) {
+	hash := e.FileHash
 	number := receiptNumberKey(e.ReceiptNumber)
 	for _, stored := range ledger.ParseExpenses(rows) {
 		if stored.Status != ledger.StatusActive {
@@ -111,8 +114,8 @@ func receiptNumberKey(s string) string {
 
 // writeDuplicate answers 409 DUPLICATE_RECEIPT and reports true when
 // duplicateOf finds one.
-func writeDuplicate(w http.ResponseWriter, rows [][]string, hash string, e ledger.Expense) bool {
-	dup, ok := duplicateOf(rows, hash, e)
+func writeDuplicate(w http.ResponseWriter, rows [][]string, e ledger.Expense) bool {
+	dup, ok := duplicateOf(rows, e)
 	if !ok {
 		return false
 	}
