@@ -11,6 +11,7 @@ package receiptstore
 import (
 	"context"
 	"errors"
+	"io"
 )
 
 // Store is what the handlers talk to.
@@ -32,6 +33,11 @@ type Store interface {
 	// Rename gives a file its final name and, when AddParent is set, moves
 	// it from RemoveParent into AddParent in the same call.
 	Rename(ctx context.Context, r Rename) (File, error)
+
+	// Download opens a file's bytes (`files.get?alt=media`). The caller
+	// closes the body and bounds how much it reads. ErrNotFound for an
+	// unknown ID.
+	Download(ctx context.Context, id string) (io.ReadCloser, error)
 }
 
 // ErrNotFound is returned by File and Rename for an unknown file ID.

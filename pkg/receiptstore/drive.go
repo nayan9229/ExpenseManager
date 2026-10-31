@@ -118,6 +118,16 @@ func (d *Drive) Rename(ctx context.Context, r Rename) (File, error) {
 	return viewOf(f), nil
 }
 
+// Download implements Store: `files.get?alt=media` through the client
+// library, which follows Drive's redirect to the content.
+func (d *Drive) Download(ctx context.Context, id string) (io.ReadCloser, error) {
+	res, err := d.svc.Files.Get(id).SupportsAllDrives(true).Context(ctx).Download()
+	if err != nil {
+		return nil, driveError("download "+id, err)
+	}
+	return res.Body, nil
+}
+
 func viewOf(f *drive.File) File {
 	return File{
 		ID: f.Id, Name: f.Name, MIMEType: f.MimeType, Parents: f.Parents,
