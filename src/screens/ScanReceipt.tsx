@@ -201,7 +201,7 @@ function ReceiptExpense({ file, member, model, onSaved, onCancel, onUnpaired }: 
     }
   }
 
-  const big = 'flex items-start gap-3 text-2xl font-semibold leading-snug'
+  const big = 'flex min-w-0 flex-1 items-start gap-3 text-left text-2xl font-semibold leading-snug'
 
   return (
     <ExpenseForm
@@ -217,13 +217,13 @@ function ReceiptExpense({ file, member, model, onSaved, onCancel, onUnpaired }: 
       onSubmit={(draft) => void submit(draft)}
       onCancel={onCancel}
     >
-      <section ref={panel} aria-label="Receipt" aria-live="polite" className="flex scroll-mt-4 flex-col gap-4 rounded-3xl bg-sand p-5">
+      <section ref={panel} aria-label="Receipt" aria-live="polite" className="flex scroll-mt-4 flex-col gap-4 rounded-3xl border-4 border-sand bg-warm-white p-5">
         {stage.kind !== 'removed' && (
           <div className="flex items-center gap-4">
             {preview ? (
-              <img src={preview} alt="The Receipt" className="size-24 shrink-0 rounded-2xl bg-warm-white object-cover" />
+              <img src={preview} alt="The Receipt" className="size-24 shrink-0 rounded-2xl bg-sand object-cover" />
             ) : (
-              <span className="flex size-24 shrink-0 items-center justify-center rounded-2xl bg-warm-white">
+              <span className="flex size-24 shrink-0 items-center justify-center rounded-2xl bg-sand">
                 {isPdf ? <FileText aria-hidden="true" className="size-12" /> : <ImageIcon aria-hidden="true" className="size-12" />}
               </span>
             )}
@@ -231,7 +231,7 @@ function ReceiptExpense({ file, member, model, onSaved, onCancel, onUnpaired }: 
           </div>
         )}
         {stage.kind === 'uploading' && (
-          <div role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(stage.fraction * 100)} className="h-4 overflow-hidden rounded-full bg-warm-white">
+          <div role="progressbar" aria-label="Upload progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(stage.fraction * 100)} className="h-4 overflow-hidden rounded-full bg-sand">
             <div className="h-full bg-olive-sage transition-[width]" style={{ width: `${Math.round(stage.fraction * 100)}%` }} />
           </div>
         )}
@@ -250,11 +250,11 @@ function ReceiptExpense({ file, member, model, onSaved, onCancel, onUnpaired }: 
         )}
         {stage.kind === 'removed' && <p className="text-xl font-semibold">No Receipt: this Expense will be saved without one.</p>}
         {duplicate && (
-          <div role="alert" className="flex flex-col gap-4 rounded-2xl border-4 border-terracotta bg-warm-white p-4">
+          <div role="alert" className="flex flex-col gap-4 rounded-2xl border-4 border-terracotta p-4">
             <p className={big}>
               <TriangleAlert aria-hidden="true" className="mt-1 size-8 shrink-0 text-terracotta" />
               <span>
-                This receipt was already added on {dayLabel(duplicate.expense.expenseDate, today)} for {formatRupees(duplicate.expense.amount)}
+                This receipt was already added {onDay(duplicate.expense.expenseDate, today)} for {formatRupees(duplicate.expense.amount)}
               </span>
             </p>
             <Button icon={Check} onClick={() => void submit(duplicate.draft, true)} disabled={busy} className="w-full">
@@ -303,6 +303,12 @@ function StageText({ stage, isPdf, big }: { stage: Stage; isPdf: boolean; big: s
     case 'removed':
       return null
   }
+}
+
+/** `today`, `yesterday`, or `on Thu 29 Oct`, for a sentence. */
+function onDay(date: string, today: string): string {
+  const label = dayLabel(date, today)
+  return /^(Today|Yesterday|Tomorrow)$/.test(label) ? label.toLowerCase() : `on ${label}`
 }
 
 /** Words for a failed prepare or upload; never the session URL. */
