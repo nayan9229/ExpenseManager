@@ -7,7 +7,10 @@
 // mapping that keeps column order in one place.
 package ledger
 
-import "context"
+import (
+	"context"
+	"time"
+)
 
 // Tab names the four sheets inside the Ledger.
 type Tab string
@@ -96,3 +99,6 @@ func IsBlank(row []string) bool {
 	}
 	return true
 }
+
+// IST is the Household's clock: every server timestamp is written in it.
+var IST = time.FixedZone("IST", 5*60*60+30*60)
