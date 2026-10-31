@@ -12,16 +12,17 @@ type Props = {
   expenses: Expense[]
   /** The Expense just saved, for the confirmation line. */
   justSaved: Expense | null
+  onScanReceipt: () => void
   onQuickExpense: () => void
   onSwitch: () => void
 }
 
 /**
  * Simple Mode (GLOSSARY): greeting, the two giant cards, and the Member's
- * own last five Expenses. Scan Receipt is a placeholder until ticket 06;
- * ticket 10 adds the mic, ticket 05 makes each Expense tappable.
+ * own last five Expenses. Ticket 10 adds the mic, ticket 05 makes each
+ * Expense tappable.
  */
-export function SimpleMode({ member, members, categories, expenses, justSaved, onQuickExpense, onSwitch }: Props) {
+export function SimpleMode({ member, members, categories, expenses, justSaved, onScanReceipt, onQuickExpense, onSwitch }: Props) {
   const today = istToday()
   const mine = lastFive(expenses, member.memberId)
 
@@ -35,15 +36,14 @@ export function SimpleMode({ member, members, categories, expenses, justSaved, o
       <div className="grid grid-cols-2 gap-4">
         <button
           type="button"
-          disabled
-          aria-describedby="scan-soon"
-          className="flex min-h-40 flex-col items-center justify-center gap-3 rounded-3xl bg-sand p-4 text-center text-xl font-bold opacity-60"
+          onClick={onScanReceipt}
+          className={
+            'flex min-h-40 flex-col items-center justify-center gap-3 rounded-3xl bg-mocha p-4 text-center text-xl font-bold text-warm-white ' +
+            'outline-none focus-visible:ring-4 focus-visible:ring-olive-sage active:scale-[0.98] transition-transform'
+          }
         >
           <Camera aria-hidden="true" className="size-12" strokeWidth={2} />
           Scan Receipt
-          <span id="scan-soon" className="text-base font-normal">
-            Coming soon
-          </span>
         </button>
         <button
           type="button"

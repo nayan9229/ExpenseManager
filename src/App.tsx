@@ -7,6 +7,7 @@ import { useReadModel } from './lib/readModel'
 import { Gatekeeper } from './screens/Gatekeeper'
 import { ProfileSwitcher } from './screens/ProfileSwitcher'
 import { QuickExpense } from './screens/QuickExpense'
+import { ScanReceipt } from './screens/ScanReceipt'
 import { SimpleMode } from './screens/SimpleMode'
 
 type Boot =
@@ -51,7 +52,7 @@ export default function App() {
   }
 }
 
-type View = { kind: 'home'; justSaved: Expense | null } | { kind: 'quickExpense' }
+type View = { kind: 'home'; justSaved: Expense | null } | { kind: 'quickExpense' } | { kind: 'scanReceipt' }
 
 /**
  * A paired device: Bootstrap once, load the read model, then either the
@@ -101,6 +102,17 @@ function PairedApp({ onUnpaired }: { onUnpaired: () => void }) {
       />
     )
   }
+  if (view.kind === 'scanReceipt') {
+    return (
+      <ScanReceipt
+        member={current}
+        model={model.data}
+        onSaved={(expense) => setView({ kind: 'home', justSaved: expense })}
+        onCancel={() => setView({ kind: 'home', justSaved: null })}
+        onUnpaired={onUnpaired}
+      />
+    )
+  }
   return (
     <SimpleMode
       member={current}
@@ -108,6 +120,7 @@ function PairedApp({ onUnpaired }: { onUnpaired: () => void }) {
       categories={model.data.categories}
       expenses={model.data.expenses}
       justSaved={view.justSaved}
+      onScanReceipt={() => setView({ kind: 'scanReceipt' })}
       onQuickExpense={() => setView({ kind: 'quickExpense' })}
       onSwitch={() => {
         forgetMember()
