@@ -110,7 +110,7 @@ describe('prefillFromOcr', () => {
     expect(highlight).toEqual({ category: true })
   })
 
-  test('a petrol bill picks Petrol & Transport when the Member can see it', () => {
+  test('a petrol pump Receipt picks Petrol & Transport when the Member can see it', () => {
     const fuel = { ...pharmacyBill, merchant: 'HP Petrol Pump', category: 'Petrol & Transport' }
 
     expect(prefill(fuel, [...categories, category('Petrol & Transport', '🚗')]).draft.category).toBe('Petrol & Transport')

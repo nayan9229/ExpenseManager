@@ -290,9 +290,9 @@ func TestADriveFailureDuringTheRenameAppendsNothing(t *testing.T) {
 	}
 }
 
-// fuelBill is an Expense already in the Ledger for a petrol pump bill
+// petrolReceipt is an Expense already in the Ledger for a petrol pump Receipt
 // whose Receipt Number is "INV 4521".
-func fuelBill(status ledger.Status) ledger.Expense {
+func petrolReceipt(status ledger.Status) ledger.Expense {
 	return ledger.Expense{
 		ID: "0b5c8f9e-3333-4c2a-9d55-0b9e1c3f7a10", CreatedAt: "2026-10-29T19:00:00+05:30", UpdatedAt: "2026-10-29T19:00:00+05:30",
 		ExpenseDate: "2026-10-29", LoggedBy: "admin", PaidBy: "admin", Amount: 450, Currency: "INR",
@@ -305,10 +305,10 @@ func fuelBill(status ledger.Status) ledger.Expense {
 
 func TestTheSameReceiptNumberAndAmountIsADuplicateUnlessForced(t *testing.T) {
 	f := newFixture(t)
-	existing := fuelBill(ledger.StatusActive)
+	existing := petrolReceipt(ledger.StatusActive)
 	f.ledger.Seed(ledger.Expenses, existing.Row())
 	fileID := uploaded(t, f, "2026-10-30")
-	req := withReceipt(fileID) // a different photo of the same bill: another hash
+	req := withReceipt(fileID) // a different photo of the same Receipt: another hash
 	req["receiptNumber"] = " inv4521 "
 
 	status, body, raw := post(t, f, req)
@@ -342,11 +342,11 @@ func TestAReceiptNumberDuplicateNeedsAnActiveExpenseWithTheSameAmount(t *testing
 		number   string
 		amount   float64
 	}{
-		"another amount":            {fuelBill(ledger.StatusActive), "INV 4521", 451},
-		"another Receipt Number":    {fuelBill(ledger.StatusActive), "INV 4522", 450},
-		"a deleted Expense":         {fuelBill(ledger.StatusDeleted), "INV 4521", 450},
-		"no Receipt Number sent":    {fuelBill(ledger.StatusActive), "", 450},
-		"neither has a Receipt No.": {func() ledger.Expense { e := fuelBill(ledger.StatusActive); e.ReceiptNumber = ""; return e }(), "  ", 450},
+		"another amount":               {petrolReceipt(ledger.StatusActive), "INV 4521", 451},
+		"another Receipt Number":       {petrolReceipt(ledger.StatusActive), "INV 4522", 450},
+		"a deleted Expense":            {petrolReceipt(ledger.StatusDeleted), "INV 4521", 450},
+		"no Receipt Number sent":       {petrolReceipt(ledger.StatusActive), "", 450},
+		"neither has a Receipt Number": {func() ledger.Expense { e := petrolReceipt(ledger.StatusActive); e.ReceiptNumber = ""; return e }(), "  ", 450},
 	}
 	for name, c := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -365,7 +365,7 @@ func TestAReceiptNumberDuplicateNeedsAnActiveExpenseWithTheSameAmount(t *testing
 
 func TestAReceiptNumberDuplicateIsFoundWithoutAReceiptFileToo(t *testing.T) {
 	f := newFixture(t)
-	f.ledger.Seed(ledger.Expenses, fuelBill(ledger.StatusActive).Row())
+	f.ledger.Seed(ledger.Expenses, petrolReceipt(ledger.StatusActive).Row())
 	req := validCreate()
 	req["receiptNumber"] = "INV 4521"
 
