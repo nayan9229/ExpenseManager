@@ -10,12 +10,15 @@ import { QueryClient, useQuery } from '@tanstack/react-query'
 import {
   ApiError,
   createExpense,
+  deleteExpense,
   getReadModel,
   runBootstrap,
+  updateExpense,
   type CreateExpenseInput,
   type CreateExpenseResult,
   type Expense,
   type ReadModel,
+  type UpdateExpenseInput,
 } from './api'
 import { forgetBootstrapped, isBootstrapped, markBootstrapped, type DeviceStore } from './device'
 import { byNewest } from './quickExpense'
@@ -91,4 +94,48 @@ export async function saveExpense(
   // in the background and a failure there keeps the optimistic copy.
   void client.invalidateQueries({ queryKey: readModelKey, refetchType: refetch ? 'active' : 'none' })
   return result
+}
+
+/** The read model without the Expense whose ID is `id`. */
+export function withoutExpense(model: ReadModel, id: string): ReadModel {
+  return { ...model, expenses: model.expenses.filter((e) => e.id !== id) }
+}
+
+const isGone = (err: unknown) => err instanceof ApiError && err.code === 'EXPENSE_NOT_FOUND'
+
+/**
+ * Edits an Expense, swaps the stored copy into the cached read model so the
+ * list and totals change without a reload, then marks the read model stale.
+ * An Expense deleted on another device (404) is dropped from the cache
+ * before the error is passed on; any other failure leaves the cache alone.
+ */
+export async function saveEdit(
+  input: UpdateExpenseInput,
+  { client = queryClient, fetchImpl = fetch, refetch = true }: SaveDeps = {},
+): Promise<Expense> {
+  try {
+    const expense = await updateExpense(input, fetchImpl)
+    client.setQueryData<ReadModel>(readModelKey, (old) => (old ? withExpense(old, expense) : old))
+    return expense
+  } catch (err) {
+    if (isGone(err)) client.setQueryData<ReadModel>(readModelKey, (old) => (old ? withoutExpense(old, input.id) : old))
+    throw err
+  } finally {
+    void client.invalidateQueries({ queryKey: readModelKey, refetchType: refetch ? 'active' : 'none' })
+  }
+}
+
+/**
+ * Deletes an Expense (Soft Delete) and takes it out of the cached read
+ * model at once. One that is already gone from the Ledger (404) counts as
+ * deleted; any other failure keeps it listed and rejects.
+ */
+export async function removeExpense(id: string, { client = queryClient, fetchImpl = fetch, refetch = true }: SaveDeps = {}): Promise<void> {
+  try {
+    await deleteExpense(id, fetchImpl)
+  } catch (err) {
+    if (!isGone(err)) throw err
+  }
+  client.setQueryData<ReadModel>(readModelKey, (old) => (old ? withoutExpense(old, id) : old))
+  void client.invalidateQueries({ queryKey: readModelKey, refetchType: refetch ? 'active' : 'none' })
 }

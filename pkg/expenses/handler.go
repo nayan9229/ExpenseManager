@@ -4,7 +4,8 @@
 // (ADR-0002): the client verifies a typed PIN against
 // SHA-256("<memberId>:<pin>") offline.
 //
-// Update and Delete (PUT, DELETE on the same path) arrive with ticket 05.
+// PUT edits an Expense in place and DELETE marks it deleted (Soft Delete).
+// Whether the acting Member may edit it is the client's call (ADR-0002).
 package expenses
 
 import (
@@ -103,14 +104,14 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 
 // rejectMethod answers 405 for anything this function does not serve and
 // reports whether it did. It runs before the environment is read, so a wrong
-// method is never mistaken for a misconfigured server. Ticket 05 adds PUT
-// and DELETE here and in serve.
+// method is never mistaken for a misconfigured server.
 func rejectMethod(w http.ResponseWriter, r *http.Request) bool {
-	if r.Method == http.MethodGet || r.Method == http.MethodPost {
+	switch r.Method {
+	case http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete:
 		return false
 	}
-	w.Header().Set("Allow", "GET, POST")
-	httpjson.WriteError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "expenses accepts GET and POST")
+	w.Header().Set("Allow", "GET, POST, PUT, DELETE")
+	httpjson.WriteError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "expenses accepts GET, POST, PUT and DELETE")
 	return true
 }
 
@@ -118,11 +119,16 @@ func (s Service) serve(w http.ResponseWriter, r *http.Request) {
 	if rejectMethod(w, r) {
 		return
 	}
-	if r.Method == http.MethodPost {
+	switch r.Method {
+	case http.MethodPost:
 		s.create(w, r)
-		return
+	case http.MethodPut:
+		s.update(w, r)
+	case http.MethodDelete:
+		s.remove(w, r)
+	default:
+		s.read(w, r)
 	}
-	s.read(w, r)
 }
 
 func (s Service) read(w http.ResponseWriter, r *http.Request) {

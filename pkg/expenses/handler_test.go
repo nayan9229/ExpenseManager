@@ -233,13 +233,23 @@ func TestNeedsASession(t *testing.T) {
 	}
 }
 
-func TestEditsAndDeletesArriveWithTheNextTicket(t *testing.T) {
+func TestAnyOtherMethodIsRejectedNamingTheFourItServes(t *testing.T) {
 	f := newFixture(t)
+	req, _ := http.NewRequest(http.MethodPatch, f.srv.URL+"/api/expenses", nil)
+	req.AddCookie(pairedCookie(t))
 
-	status, raw := call(t, f.srv, http.MethodPut, pairedCookie(t))
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	raw, _ := io.ReadAll(res.Body)
 
-	if status != http.StatusMethodNotAllowed || !strings.Contains(raw, "METHOD_NOT_ALLOWED") {
-		t.Fatalf("status = %d body = %s, want 405 METHOD_NOT_ALLOWED", status, raw)
+	if res.StatusCode != http.StatusMethodNotAllowed || !strings.Contains(string(raw), "METHOD_NOT_ALLOWED") {
+		t.Fatalf("status = %d body = %s, want 405 METHOD_NOT_ALLOWED", res.StatusCode, raw)
+	}
+	if allow := res.Header.Get("Allow"); allow != "GET, POST, PUT, DELETE" {
+		t.Errorf("Allow = %q, want GET, POST, PUT, DELETE", allow)
 	}
 }
 
@@ -287,7 +297,7 @@ func TestAWrongMethodIsRejectedBeforeTheConfigurationIsRead(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(expenses.Handler))
 	t.Cleanup(srv.Close)
 
-	status, raw := call(t, srv, http.MethodDelete, pairedCookie(t))
+	status, raw := call(t, srv, http.MethodPatch, pairedCookie(t))
 
 	if status != http.StatusMethodNotAllowed || !strings.Contains(raw, "METHOD_NOT_ALLOWED") {
 		t.Fatalf("status = %d body = %s, want 405 METHOD_NOT_ALLOWED even on a misconfigured server", status, raw)

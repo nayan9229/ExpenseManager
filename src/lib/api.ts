@@ -247,3 +247,38 @@ export async function createExpense(input: CreateExpenseInput, fetchImpl: typeof
   const expense = await readJson<Expense>(res)
   return { expense, replayed: res.status === 200 }
 }
+
+/**
+ * What an edit sends: the ID plus the editable fields. A field left out
+ * keeps its stored value, so "Mark done" can send only the Reimbursement.
+ */
+export type UpdateExpenseInput = Pick<Expense, 'id'> &
+  Partial<Pick<Expense, 'expenseDate' | 'paidBy' | 'amount' | 'category' | 'merchantNote' | 'paymentMethod' | 'reimbursementStatus'>>
+
+/**
+ * Edits an Expense in place and returns it as stored (`updatedAt` stamped).
+ * An Expense deleted meanwhile rejects with `EXPENSE_NOT_FOUND` (404).
+ */
+export async function updateExpense(input: UpdateExpenseInput, fetchImpl: typeof fetch = fetch): Promise<Expense> {
+  const res = await fetchImpl('/api/expenses', {
+    method: 'PUT',
+    headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+    credentials: 'same-origin',
+    body: JSON.stringify(input),
+  })
+  return readJson<Expense>(res)
+}
+
+/**
+ * Deletes an Expense (Soft Delete: the row stays in the Ledger marked
+ * deleted) and returns it with `status: 'deleted'`. Deleting twice is
+ * harmless; an unknown ID rejects with `EXPENSE_NOT_FOUND` (404).
+ */
+export async function deleteExpense(id: string, fetchImpl: typeof fetch = fetch): Promise<Expense> {
+  const res = await fetchImpl(`/api/expenses?${new URLSearchParams({ id })}`, {
+    method: 'DELETE',
+    headers: { Accept: 'application/json' },
+    credentials: 'same-origin',
+  })
+  return readJson<Expense>(res)
+}
