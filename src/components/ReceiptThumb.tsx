@@ -49,7 +49,7 @@ export function ReceiptThumb({ fileId, label, onOpen }: { fileId: string; label:
         <>
           <img src={thumb.url} alt="" className="absolute inset-0 size-full object-cover" />
           {thumb.isPdf && (
-            <span className="absolute bottom-1 left-1 rounded-md bg-mocha px-1.5 text-sm font-bold text-warm-white">PDF</span>
+            <span className="absolute bottom-1 left-1 rounded-md bg-mocha px-1 text-base leading-tight font-bold text-warm-white">PDF</span>
           )}
         </>
       ) : thumb.state === 'loading' ? (
