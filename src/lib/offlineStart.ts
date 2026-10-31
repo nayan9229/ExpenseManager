@@ -38,7 +38,14 @@ export async function startOffline(): Promise<void> {
     await loadDeviceSettings(appDb())
     await showKeptReadModel(queryClient, appQueue())
   })()
-  await Promise.race([ready.catch(() => {}), new Promise((resolve) => setTimeout(resolve, START_LIMIT_MS))])
+  const opened = await Promise.race([
+    ready.then(
+      () => true,
+      () => true,
+    ),
+    new Promise<false>((resolve) => setTimeout(() => resolve(false), START_LIMIT_MS)),
+  ])
+  if (!opened) console.warn('The device database was slow to open; starting without it')
   void requestPersistentStorage()
   const sync = () => void appQueue().sync().catch(() => {})
   syncOnResume(sync)

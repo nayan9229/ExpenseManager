@@ -14,15 +14,15 @@ export const NEEDS_ATTENTION = 'Needs attention'
 export function QueueBadge({ state }: { state: QueueState }) {
   if (state === 'needs-attention') {
     return (
-      <span className="inline-flex items-center gap-1 rounded-full border-2 border-terracotta px-3 text-terracotta">
+      <span className="inline-flex items-center gap-2 rounded-xl border-2 border-terracotta px-3 py-0.5 text-terracotta">
         <TriangleAlert aria-hidden="true" className="size-5 shrink-0" />
         {NEEDS_ATTENTION}
       </span>
     )
   }
   return (
-    <span className="inline-flex items-center gap-1 rounded-full border-2 border-olive-sage px-3">
-      <CloudOff aria-hidden="true" className="size-5 shrink-0" />
+    <span className="flex w-full items-start gap-2 rounded-xl border-2 border-olive-sage px-3 py-0.5">
+      <CloudOff aria-hidden="true" className="mt-0.5 size-5 shrink-0" />
       {SAVED_ON_PHONE}
     </span>
   )

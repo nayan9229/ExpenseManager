@@ -26,10 +26,15 @@ const LEGACY_KEYS = [SELECTED_MEMBER, BOOTSTRAPPED, SPEECH_LANGUAGE]
 const memory = new Map<string, string>()
 let database: ExpenseDb | null = null
 let saving: Promise<void> = Promise.resolve()
+/** Written while the database was still opening (a slow first start): saved, and kept, once it is open. */
+const early = new Map<string, string | null>()
 
 function save(key: string, value: string | null): void {
   const db = database
-  if (!db) return
+  if (!db) {
+    early.set(key, value)
+    return
+  }
   saving = saving
     .then(async () => {
       if (value === null) await db.settings.delete(key)
@@ -71,6 +76,7 @@ function legacyStore(): DeviceStore | null {
  */
 export async function loadDeviceSettings(db: ExpenseDb, legacy: DeviceStore | null = legacyStore()): Promise<void> {
   memory.clear()
+  early.clear()
   database = null
   try {
     const rows = await db.settings.toArray()
@@ -83,8 +89,10 @@ export async function loadDeviceSettings(db: ExpenseDb, legacy: DeviceStore | nu
       await db.settings.bulkPut(rows)
       for (const key of LEGACY_KEYS) write(legacy, key, null)
     }
-    for (const { key, value } of rows) memory.set(key, value)
+    for (const { key, value } of rows) if (!early.has(key)) memory.set(key, value)
     database = db
+    for (const [key, value] of early) save(key, value)
+    early.clear()
   } catch {
     // No IndexedDB here: fall back to whatever localStorage still holds, for this load only.
     for (const key of LEGACY_KEYS) {
