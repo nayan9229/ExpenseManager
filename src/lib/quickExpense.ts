@@ -6,7 +6,7 @@
  * The draft is shared with ticket 05 (edit), 06 (Receipt prefill) and 10
  * (voice prefill): they start from `newDraft` or their own partial draft.
  */
-import { isActive, type Category, type CreateExpenseInput, type Expense, type Member, type PaymentMethod, type ReimbursementStatus, type Role } from './api'
+import { isActive, MAX_RECEIPT_NUMBER, type Category, type CreateExpenseInput, type Expense, type Member, type PaymentMethod, type ReimbursementStatus, type Role } from './api'
 import { addDays } from './istDate'
 
 /** Everything the Quick Expense form edits. */
@@ -22,6 +22,11 @@ export type ExpenseDraft = {
   reimbursementStatus: ReimbursementStatus
   /** Member ID; defaults to the Member logging it. */
   paidBy: string
+  /**
+   * The Receipt Number, on the Scan form (prefilled by OCR) and the Edit
+   * screen only; Quick Expense and voice never set it. Blank means none.
+   */
+  receiptNumber?: string
 }
 
 /**
@@ -92,12 +97,15 @@ export function draftProblem(draft: ExpenseDraft, today: string): string | null 
   if (!draft.category) return 'Pick a Category'
   if (!/^\d{4}-\d{2}-\d{2}$/.test(draft.expenseDate)) return 'Pick a date'
   if (draft.expenseDate > addDays(today, 1)) return 'The date cannot be after tomorrow'
+  if ((draft.receiptNumber ?? '').trim().length > MAX_RECEIPT_NUMBER) return `The Receipt No. can be at most ${MAX_RECEIPT_NUMBER} characters`
   return null
 }
 
-/** The create request for a saveable draft. */
+/** The create request for a saveable draft; a Receipt No. only when there is one (Scan). */
 export function toCreateInput(draft: ExpenseDraft, loggedBy: string, id: string): CreateExpenseInput {
+  const receiptNumber = draft.receiptNumber?.trim()
   return {
+    ...(receiptNumber ? { receiptNumber } : {}),
     id,
     expenseDate: draft.expenseDate,
     loggedBy,

@@ -134,6 +134,12 @@ describe('draftProblem', () => {
     expect(draftProblem({ ...ok, category: null }, '2026-10-31')).toBe('Pick a Category')
     expect(draftProblem({ ...ok, expenseDate: '' }, '2026-10-31')).toBe('Pick a date')
     expect(draftProblem({ ...ok, expenseDate: '2026-11-02' }, '2026-10-31')).toBe('The date cannot be after tomorrow')
+    expect(draftProblem({ ...ok, receiptNumber: '9'.repeat(41) }, '2026-10-31')).toBe('The Receipt No. can be at most 40 characters')
+  })
+
+  test('a Receipt No. of 40 characters, or with spaces around it, is fine', () => {
+    expect(draftProblem({ ...ok, receiptNumber: '9'.repeat(40) }, '2026-10-31')).toBeNull()
+    expect(draftProblem({ ...ok, receiptNumber: ` ${'9'.repeat(40)} ` }, '2026-10-31')).toBeNull()
   })
 })
 
@@ -158,6 +164,14 @@ describe('toCreateInput', () => {
       paymentMethod: 'Cash',
       reimbursementStatus: 'pending',
     })
+  })
+
+  test('a Quick Expense sends no Receipt No.; a Scan sends the trimmed one it has', () => {
+    const draft = { ...newDraft(ramesh, '2026-10-31'), amount: 450, category: 'Petrol & Transport' }
+
+    expect(toCreateInput(draft, 'ramesh', 'id-1')).not.toHaveProperty('receiptNumber')
+    expect(toCreateInput({ ...draft, receiptNumber: '   ' }, 'ramesh', 'id-1')).not.toHaveProperty('receiptNumber')
+    expect(toCreateInput({ ...draft, receiptNumber: ' 004521/A ' }, 'ramesh', 'id-1')).toMatchObject({ receiptNumber: '004521/A' })
   })
 })
 

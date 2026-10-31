@@ -100,6 +100,7 @@ function optimisticExpense(payload: CreateExpenseInput, receipt: QueuedReceipt |
     fileHash: receipt?.fileHash ?? payload.fileHash ?? '',
     reimbursementStatus: payload.reimbursementStatus ?? 'none',
     status: 'active',
+    receiptNumber: payload.receiptNumber ?? '',
   }
 }
 

@@ -404,6 +404,29 @@ describe('a Receipt scanned offline', () => {
     expect(server.bodies[2]).toMatchObject({ driveFileId: 'drive-1', fileHash: 'ab12' })
     expect(await queue.items()).toEqual([])
   })
+
+  test('its Receipt Number shows while it waits, and a Receipt Number duplicate on Sync becomes Needs attention with Add anyway', async () => {
+    const { server, queue, puts } = await setup()
+    const earlier = stored('old-1', { amount: 450, receiptNumber: 'INV 4521' })
+    server.goOffline()
+    await queue.save({ kind: 'create', payload: input('new-1', { receiptNumber: 'inv4521' }), receipt: receipt() })
+    expect((await queue.readModel())?.expenses.find((e) => e.id === 'new-1')).toMatchObject({ receiptNumber: 'inv4521' })
+    server.goOnline()
+    server.script('ok', { status: 409, code: 'DUPLICATE_RECEIPT', message: 'This receipt was already added on 2026-10-30 for ₹450', body: { expense: earlier } })
+
+    await queue.sync()
+
+    const [item] = await queue.items()
+    expect(item).toMatchObject({ state: 'needs-attention', lastError: { status: 409, code: 'DUPLICATE_RECEIPT' } })
+    expect(retryChoice(item!)).toEqual({ label: 'Add anyway', force: true })
+
+    await queue.retry(item!.seq!, retryChoice(item!))
+
+    expect(puts).toHaveLength(1)
+    expect(server.bodies.at(-1)).toMatchObject({ id: 'new-1', receiptNumber: 'inv4521', driveFileId: 'drive-1', force: true })
+    expect(await queue.items()).toEqual([])
+    expect((await queue.readModel())?.expenses.find((e) => e.id === 'new-1')).toMatchObject({ receiptNumber: 'inv4521' })
+  })
 })
 
 describe('saving with signal', () => {

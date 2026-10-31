@@ -25,6 +25,8 @@ export function draftFromExpense(expense: Expense): ExpenseDraft {
     note: expense.merchantNote,
     reimbursementStatus: expense.reimbursementStatus,
     paidBy: expense.paidBy,
+    // Absent on a copy from an older server: left out, so Save cannot wipe a Receipt No. it never saw.
+    ...(expense.receiptNumber === undefined ? {} : { receiptNumber: expense.receiptNumber }),
   }
 }
 
@@ -39,5 +41,6 @@ export function toUpdateInput(draft: ExpenseDraft, id: string): UpdateExpenseInp
     merchantNote: draft.note.trim(),
     paymentMethod: draft.paymentMethod,
     reimbursementStatus: draft.reimbursementStatus,
+    ...(draft.receiptNumber === undefined ? {} : { receiptNumber: draft.receiptNumber.trim() }),
   }
 }
