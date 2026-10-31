@@ -51,19 +51,19 @@ const FAILURES: Record<string, ListenFailure> = {
 export function failureMessage(reason: ListenFailure): string {
   switch (reason) {
     case 'not-allowed':
-      return 'The microphone is not allowed for this app. Type the Expense instead.'
+      return 'Microphone not allowed. Please type it.'
     case 'speech-off':
-      return 'Speech is switched off on this phone (Siri & Dictation). Type the Expense instead.'
+      return 'Turn on Siri & Dictation to speak. Please type it.'
     case 'no-speech':
-      return 'Did not hear anything. Type the Expense instead.'
+      return 'Did not hear anything. Please type it.'
     case 'network':
-      return 'Voice needs the internet. Type the Expense instead.'
+      return 'Voice needs the internet. Please type it.'
     case 'no-microphone':
-      return 'No microphone found. Type the Expense instead.'
+      return 'No microphone found. Please type it.'
     case 'language':
-      return 'This phone cannot listen in that language. Type the Expense instead.'
+      return 'No voice for this language here. Please type it.'
     case 'other':
-      return 'Voice did not work this time. Type the Expense instead.'
+      return 'Voice did not work. Please type it.'
   }
 }
 

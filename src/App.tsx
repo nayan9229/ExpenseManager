@@ -1,6 +1,7 @@
-import { CircleDashed, RefreshCw, TriangleAlert } from 'lucide-react'
+import { CircleDashed, Mic, RefreshCw, TriangleAlert } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import { Button } from './components/Button'
+import type { VoiceResult } from './components/VoiceEntry'
 import { ApiError, getSessionState, type Expense } from './lib/api'
 import { forgetMember, rememberMember, rememberedMemberId } from './lib/device'
 import { useReadModel } from './lib/readModel'
@@ -51,7 +52,7 @@ export default function App() {
   }
 }
 
-type View = { kind: 'home'; justSaved: Expense | null } | { kind: 'quickExpense' }
+type View = { kind: 'home'; justSaved: Expense | null } | { kind: 'quickExpense'; voice?: VoiceResult }
 
 /**
  * A paired device: Bootstrap once, load the read model, then either the
@@ -95,6 +96,8 @@ function PairedApp({ onUnpaired }: { onUnpaired: () => void }) {
       <QuickExpense
         member={current}
         model={model.data}
+        prefill={view.voice?.kind === 'heard' ? view.voice.prefill : undefined}
+        notice={view.voice && <VoiceNotice result={view.voice} />}
         onSaved={(expense) => setView({ kind: 'home', justSaved: expense })}
         onCancel={() => setView({ kind: 'home', justSaved: null })}
         onUnpaired={onUnpaired}
@@ -109,12 +112,33 @@ function PairedApp({ onUnpaired }: { onUnpaired: () => void }) {
       expenses={model.data.expenses}
       justSaved={view.justSaved}
       onQuickExpense={() => setView({ kind: 'quickExpense' })}
+      onVoice={(voice) => setView({ kind: 'quickExpense', voice })}
       onSwitch={() => {
         forgetMember()
         setMemberId(null)
         setView({ kind: 'home', justSaved: null })
       }}
     />
+  )
+}
+
+/** What voice entry heard (so a misheard word is easy to spot), or why it failed. */
+function VoiceNotice({ result }: { result: VoiceResult }) {
+  if (result.kind === 'failed') {
+    return (
+      <p role="alert" className="flex items-start gap-3 text-lg text-terracotta">
+        <TriangleAlert aria-hidden="true" className="mt-0.5 size-7 shrink-0" />
+        {result.message}
+      </p>
+    )
+  }
+  return (
+    <p role="status" className="flex items-start gap-3 rounded-2xl bg-sand p-4 text-lg">
+      <Mic aria-hidden="true" className="mt-0.5 size-7 shrink-0 text-olive-sage" />
+      <span>
+        Heard “{result.transcript}”. Check it and tap Save.
+      </span>
+    </p>
   )
 }
 

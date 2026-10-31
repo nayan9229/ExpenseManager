@@ -1,5 +1,6 @@
 import { Camera, CircleCheck, Keyboard, Users } from 'lucide-react'
 import { Button } from '../components/Button'
+import { VoiceEntry, type VoiceResult } from '../components/VoiceEntry'
 import type { Category, Expense, Member } from '../lib/api'
 import { dayLabel, istToday } from '../lib/istDate'
 import { lastFive } from '../lib/quickExpense'
@@ -13,15 +14,18 @@ type Props = {
   /** The Expense just saved, for the confirmation line. */
   justSaved: Expense | null
   onQuickExpense: () => void
+  /** A voice attempt finished: open Quick Expense with its prefill or its one-line failure. */
+  onVoice: (result: VoiceResult) => void
   onSwitch: () => void
 }
 
 /**
  * Simple Mode (GLOSSARY): greeting, the two giant cards, and the Member's
  * own last five Expenses. Scan Receipt is a placeholder until ticket 06;
- * ticket 10 adds the mic, ticket 05 makes each Expense tappable.
+ * the mic shows only where the browser can listen; ticket 05 makes each
+ * Expense tappable.
  */
-export function SimpleMode({ member, members, categories, expenses, justSaved, onQuickExpense, onSwitch }: Props) {
+export function SimpleMode({ member, members, categories, expenses, justSaved, onQuickExpense, onVoice, onSwitch }: Props) {
   const today = istToday()
   const mine = lastFive(expenses, member.memberId)
 
@@ -57,6 +61,8 @@ export function SimpleMode({ member, members, categories, expenses, justSaved, o
           Quick Expense
         </button>
       </div>
+
+      <VoiceEntry member={member} categories={categories} onResult={onVoice} />
 
       <p role="status" className="min-h-8 text-lg">
         {justSaved && (
