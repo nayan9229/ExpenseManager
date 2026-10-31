@@ -183,11 +183,15 @@ func TestAnUpdateIsGuardedToo(t *testing.T) {
 	}
 }
 
+// A Receipt Number round-trips exactly: the cell holds the text itself (the
+// apostrophe Append adds is USER_ENTERED's quote prefix, not part of the
+// value), so Read must not take a character off a number that genuinely
+// starts with an apostrophe.
 func TestAReceiptNumberIsAlwaysStoredAsText(t *testing.T) {
 	api, ledger := newFakeSheetsAPI(t)
 	ctx := context.Background()
 	e := sampleExpense()
-	numbers := []string{"004521", "4521/A", "12-2026", "=SUM(A1)", ""}
+	numbers := []string{"004521", "00123", "4521/A", "12-2026", "=SUM(A1)", "=X", "'A12", "''7", ""}
 
 	for i, n := range numbers {
 		e.ID = "id-" + strconv.Itoa(i)
@@ -219,6 +223,29 @@ func TestAReceiptNumberIsAlwaysStoredAsText(t *testing.T) {
 	for i, got := range ParseExpenses(snap.Rows[Expenses]) {
 		if got.ReceiptNumber != numbers[i] {
 			t.Errorf("Receipt Number %d read back as %q, want %q", i, got.ReceiptNumber, numbers[i])
+		}
+	}
+}
+
+func TestAnEditedReceiptNumberRoundTripsExactly(t *testing.T) {
+	_, ledger := newFakeSheetsAPI(t)
+	ctx := context.Background()
+	e := sampleExpense()
+	if err := ledger.Append(ctx, Expenses, [][]string{e.Row()}); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, n := range []string{"00123", "4521/A", "=X", "'A12"} {
+		e.ReceiptNumber = n
+		if err := ledger.Update(ctx, Expenses, 0, e.Row()); err != nil {
+			t.Fatal(err)
+		}
+		snap, err := ledger.Read(ctx, Expenses)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := ParseExpenses(snap.Rows[Expenses]); len(got) != 1 || got[0].ReceiptNumber != n {
+			t.Errorf("Receipt Number %q read back after an edit as %+v", n, got)
 		}
 	}
 }

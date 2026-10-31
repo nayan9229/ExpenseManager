@@ -38,9 +38,14 @@ var numericColumns = map[string]bool{"Amount": true, "Monthly_Budget_Limit": tru
 
 // textColumns must read back exactly as written even in a Ledger whose
 // column was added after Bootstrap formatted the tab (so it has no plain-text
-// format): Append and Update send them with a leading apostrophe, which
-// USER_ENTERED treats as "this is text" and does not store. A Receipt Number
-// of `004521` keeps its zeros and `12-2026` never becomes a date.
+// format): Append and Update send every non-blank cell with one leading
+// apostrophe. USER_ENTERED treats it as a quote prefix ("this is text"),
+// which is not part of the cell's value: the Sheets API documents a typed
+// `'123` as the string value `123` (ExtendedValue.stringValue, "Leading
+// single quotes are not included"), and values.get returns that value. So
+// Read takes nothing off: `004521` keeps its zeros, `12-2026` never becomes a
+// date, `=X` is never a formula, and `'A12` (sent with a second apostrophe
+// in front) reads back as `'A12`.
 var textColumns = map[Tab]map[int]bool{Expenses: {columnIndex(Expenses, "Receipt_Number"): true}}
 
 func columnIndex(tab Tab, name string) int {

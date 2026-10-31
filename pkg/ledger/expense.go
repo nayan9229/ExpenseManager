@@ -69,7 +69,8 @@ type Expense struct {
 	Status        Status
 	// ReceiptNumber is the number the merchant printed on the Receipt
 	// (GLOSSARY: Receipt Number); blank means none. The Sheets adapter always
-	// stores it as text.
+	// stores it as text, and it reads back exactly as written (only
+	// trimmed): nothing is unescaped, so `'A12` stays `'A12`.
 	ReceiptNumber string
 }
 
@@ -131,7 +132,7 @@ func parseExpense(row []string) (Expense, bool) {
 		FileHash:      cell(13),
 		Reimbursement: reimbursementCell(row[14]),
 		Status:        parseStatus(row[15]),
-		ReceiptNumber: receiptNumberCell(row[16]),
+		ReceiptNumber: cell(16),
 	}
 	if e.PaidBy == "" {
 		e.PaidBy = e.LoggedBy
@@ -166,12 +167,6 @@ func reimbursementCell(cell string) Reimbursement {
 	default:
 		return ReimbursementNone
 	}
-}
-
-// receiptNumberCell reads Receipt_Number: trimmed, and without the
-// apostrophe that forces text if a cell kept it.
-func receiptNumberCell(cell string) string {
-	return strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(cell), "'"))
 }
 
 func parseStatus(cell string) Status {

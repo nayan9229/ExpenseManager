@@ -96,14 +96,16 @@ func TestARowWrittenBeforeTheReceiptNumberColumnReadsAsBlank(t *testing.T) {
 	}
 }
 
-func TestAReceiptNumberTheAdminTypedIsTrimmedAndUnescaped(t *testing.T) {
-	row := sampleExpense().Row()
-	row[16] = "  '=7  "
+func TestAReceiptNumberIsTrimmedAndOtherwiseReadAsStored(t *testing.T) {
+	for stored, want := range map[string]string{"  INV-77  ": "INV-77", "'A12": "'A12", " '=7 ": "'=7"} {
+		row := sampleExpense().Row()
+		row[16] = stored
 
-	got := ParseExpenses([][]string{row})
+		got := ParseExpenses([][]string{row})
 
-	if got[0].ReceiptNumber != "=7" {
-		t.Errorf("ReceiptNumber = %q, want =7", got[0].ReceiptNumber)
+		if got[0].ReceiptNumber != want {
+			t.Errorf("Receipt_Number cell %q read as %q, want %q", stored, got[0].ReceiptNumber, want)
+		}
 	}
 }
 
