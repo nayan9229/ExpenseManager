@@ -1,4 +1,4 @@
-import { ArrowLeft, Check, CircleAlert, Delete, TriangleAlert, Wallet } from 'lucide-react'
+import { ArrowLeft, Check, CircleAlert, Delete, ScanEye, TriangleAlert, Wallet } from 'lucide-react'
 import { useId, useState, type ReactNode } from 'react'
 import type { Category, Expense, Member, PaymentMethod, ReimbursementStatus } from '../lib/api'
 import { addDays, dayLabel } from '../lib/istDate'
@@ -49,6 +49,23 @@ export type ExpenseFormProps = {
   footer?: ReactNode
   /** Save's label while busy (the edit screen is busy deleting too). */
   busyLabel?: string
+  /**
+   * Fields to draw the eye to (OCR was unsure, ticket 07). A field stops
+   * being highlighted once the user changes it.
+   */
+  highlight?: Partial<Record<keyof ExpenseDraft, boolean>>
+  /** Called on every change the user makes, so a screen knows the draft is theirs now. */
+  onEdit?: () => void
+}
+
+/** "Check this" beside a highlighted field's title. */
+function CheckThis() {
+  return (
+    <span className="inline-flex items-center gap-1.5 text-base font-semibold">
+      <ScanEye aria-hidden="true" className="size-5 shrink-0 text-brass" />
+      Please check
+    </span>
+  )
 }
 
 /** `yesterday`, `today`, or `on Thu 29 Oct`, for a sentence. */
@@ -82,16 +99,24 @@ export function ExpenseForm({
   editing = false,
   footer,
   busyLabel = 'Saving…',
+  highlight,
+  onEdit,
 }: ExpenseFormProps) {
   const [draft, setDraft] = useState<ExpenseDraft>(initial)
   const [attempted, setAttempted] = useState(false)
   const [duplicateAccepted, setDuplicateAccepted] = useState(false)
+  const [changed, setChanged] = useState<Partial<Record<keyof ExpenseDraft, boolean>>>({})
   const ids = { note: useId(), date: useId(), amount: useId() }
 
   function change(patch: Partial<ExpenseDraft>) {
     setDraft((d) => ({ ...d, ...patch }))
     setDuplicateAccepted(false)
+    setChanged((c) => ({ ...c, ...Object.fromEntries(Object.keys(patch).map((k) => [k, true])) }))
+    onEdit?.()
   }
+  const flagged = (field: keyof ExpenseDraft) => highlight?.[field] === true && !changed[field]
+  // An outline does not move the layout when the highlight goes away.
+  const flag = (field: keyof ExpenseDraft) => (flagged(field) ? ' rounded-2xl outline-4 outline-offset-[6px] outline-brass' : '')
   const press = (key: KeypadKey) => change({ amount: pressKey(draft.amount, key) })
 
   const grid = visibleCategories(categories, member.role, draft.category)
@@ -136,9 +161,9 @@ export function ExpenseForm({
 
       {children}
 
-      <section aria-labelledby={ids.amount} className="flex flex-col gap-4">
-        <h2 id={ids.amount} className="sr-only">
-          Amount
+      <section aria-labelledby={ids.amount} className={'flex flex-col gap-4' + flag('amount')}>
+        <h2 id={ids.amount} className={flagged('amount') ? 'text-lg font-semibold' : 'sr-only'}>
+          Amount {flagged('amount') && <CheckThis />}
         </h2>
         <output aria-live="polite" className="rounded-3xl bg-sand px-5 py-4 text-center text-5xl font-bold tabular-nums">
           {formatRupees(draft.amount)}
@@ -168,8 +193,10 @@ export function ExpenseForm({
         </div>
       </section>
 
-      <section className="flex flex-col gap-3">
-        <h2 className={sectionTitle}>Category</h2>
+      <section className={'flex flex-col gap-3' + flag('category')}>
+        <h2 className={sectionTitle}>
+          Category {flagged('category') && <CheckThis />}
+        </h2>
         {grid.length === 0 ? (
           <p className="rounded-2xl bg-sand p-4 text-lg">No Categories for you yet. Ask the Admin to add one.</p>
         ) : (
@@ -199,8 +226,10 @@ export function ExpenseForm({
         )}
       </section>
 
-      <section className="flex flex-col gap-3">
-        <h2 className={sectionTitle}>Paid with</h2>
+      <section className={'flex flex-col gap-3' + flag('paymentMethod')}>
+        <h2 className={sectionTitle}>
+          Paid with {flagged('paymentMethod') && <CheckThis />}
+        </h2>
         <div className="flex flex-wrap gap-3">
           {PAYMENT_METHODS.map((pm) => (
             <button
@@ -216,8 +245,10 @@ export function ExpenseForm({
         </div>
       </section>
 
-      <section className="flex flex-col gap-3">
-        <h2 className={sectionTitle}>When</h2>
+      <section className={'flex flex-col gap-3' + flag('expenseDate')}>
+        <h2 className={sectionTitle}>
+          When {flagged('expenseDate') && <CheckThis />}
+        </h2>
         <div className="flex flex-wrap gap-3">
           <button type="button" aria-pressed={draft.expenseDate === today} onClick={() => change({ expenseDate: today })} className={chip(draft.expenseDate === today)}>
             Today
@@ -247,9 +278,9 @@ export function ExpenseForm({
         )}
       </section>
 
-      <section className="flex flex-col gap-3">
+      <section className={'flex flex-col gap-3' + flag('note')}>
         <label htmlFor={ids.note} className={sectionTitle}>
-          Note <span className="font-normal">(optional)</span>
+          Note <span className="font-normal">(optional)</span> {flagged('note') && <CheckThis />}
         </label>
         <input
           id={ids.note}

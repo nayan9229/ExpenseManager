@@ -9,7 +9,9 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strconv"
+	"strings"
 
 	"google.golang.org/api/drive/v3"
 	"google.golang.org/api/googleapi"
@@ -22,7 +24,7 @@ import (
 const UploadEndpoint = "https://www.googleapis.com/upload/drive/v3/files"
 
 // fileFields is what File and Rename ask Drive for.
-const fileFields = "id,name,mimeType,parents,webViewLink,size,trashed"
+const fileFields = "id,name,mimeType,parents,webViewLink,thumbnailLink,size,trashed"
 
 // Drive is the production Store, backed by the Drive v3 API.
 type Drive struct {
@@ -118,11 +120,76 @@ func (d *Drive) Rename(ctx context.Context, r Rename) (File, error) {
 	return viewOf(f), nil
 }
 
+// thumbnailSize asks Drive for a thumbnail sharp enough for the lightbox's
+// PDF preview, not only for the list. Drive's links end in `=s220`; the
+// `=s<px>` suffix is the image server's size parameter (observed, not in
+// the Drive reference), so a link without it is fetched unchanged.
+var thumbnailSize = regexp.MustCompile(`=s\d+$`)
+
+// maxThumbnail bounds what a thumbnail fetch may read.
+const maxThumbnail = 2 << 20
+
+// Thumbnail implements Store: a GET of the short-lived thumbnailLink with
+// the OAuth client, because the link is useless without credentials for a
+// private file (research answer 5).
+func (d *Drive) Thumbnail(ctx context.Context, f File) (Image, error) {
+	if f.ThumbnailLink == "" {
+		return Image{}, ErrNoThumbnail
+	}
+	link := thumbnailSize.ReplaceAllString(f.ThumbnailLink, "=s800")
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, link, nil)
+	if err != nil {
+		return Image{}, err
+	}
+	res, err := d.http.Do(req)
+	if err != nil {
+		return Image{}, fmt.Errorf("drive: thumbnail of %s: %w", f.ID, err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode == http.StatusNotFound {
+		return Image{}, fmt.Errorf("drive: thumbnail of %s: %w", f.ID, ErrNoThumbnail)
+	}
+	if res.StatusCode != http.StatusOK {
+		return Image{}, fmt.Errorf("drive: thumbnail of %s: %s", f.ID, res.Status)
+	}
+	body, err := io.ReadAll(io.LimitReader(res.Body, maxThumbnail+1))
+	if err != nil {
+		return Image{}, fmt.Errorf("drive: thumbnail of %s: %w", f.ID, err)
+	}
+	if len(body) > maxThumbnail {
+		return Image{}, fmt.Errorf("drive: thumbnail of %s: %w", f.ID, ErrTooLarge)
+	}
+	mimeType := res.Header.Get("Content-Type")
+	if !strings.HasPrefix(mimeType, "image/") {
+		mimeType = http.DetectContentType(body)
+	}
+	return Image{Bytes: body, MIMEType: mimeType}, nil
+}
+
 func viewOf(f *drive.File) File {
 	return File{
 		ID: f.Id, Name: f.Name, MIMEType: f.MimeType, Parents: f.Parents,
-		WebViewLink: f.WebViewLink, Size: f.Size, Trashed: f.Trashed,
+		WebViewLink: f.WebViewLink, ThumbnailLink: f.ThumbnailLink, Size: f.Size, Trashed: f.Trashed,
 	}
+}
+
+// Download implements Store: `files.get?alt=media` through the client
+// library, which sends the Bearer token (research answer 5). At most
+// limit+1 bytes are read, so an oversize file costs one extra byte.
+func (d *Drive) Download(ctx context.Context, id string, limit int64) ([]byte, error) {
+	res, err := d.svc.Files.Get(id).SupportsAllDrives(true).Context(ctx).Download()
+	if err != nil {
+		return nil, driveError("download "+id, err)
+	}
+	defer res.Body.Close()
+	body, err := io.ReadAll(io.LimitReader(res.Body, limit+1))
+	if err != nil {
+		return nil, fmt.Errorf("drive: download %s: %w", id, err)
+	}
+	if int64(len(body)) > limit {
+		return nil, ErrTooLarge
+	}
+	return body, nil
 }
 
 func driveError(what string, err error) error {

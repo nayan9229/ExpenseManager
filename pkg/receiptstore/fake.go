@@ -15,6 +15,10 @@ type Fake struct {
 	Files   []FakeFile
 	// Uploads records every resumable session opened, in order.
 	Uploads []FakeUpload
+	// Downloads records the ID of every file whose bytes were read.
+	Downloads []string
+	// Thumbnails records the ID of every file whose thumbnail was fetched.
+	Thumbnails []string
 	// Writes counts calls that changed something, so a test can prove an
 	// idempotent handler wrote nothing the second time.
 	Writes int
@@ -36,6 +40,14 @@ type FakeFile struct {
 	Name     string
 	MIMEType string
 	Trashed  bool
+	// Content is what Download returns.
+	Content []byte
+	// Size is what File reports; zero means len(Content), so a test can
+	// claim a huge file without allocating it.
+	Size int64
+	// Thumbnail is what Drive generated; nil means "not made yet".
+	Thumbnail     []byte
+	ThumbnailType string
 }
 
 // FakeUpload is a resumable session as the server opened it.
@@ -156,10 +168,61 @@ func (f *Fake) Rename(_ context.Context, r Rename) (File, error) {
 }
 
 func fakeView(file FakeFile) File {
+	size := file.Size
+	if size == 0 {
+		size = int64(len(file.Content))
+	}
 	return File{
 		ID: file.ID, Name: file.Name, MIMEType: file.MIMEType, Parents: slices.Clip([]string{file.ParentID}),
-		WebViewLink: "https://drive.google.com/file/d/" + file.ID + "/view?usp=drivesdk", Trashed: file.Trashed,
+		WebViewLink: "https://drive.google.com/file/d/" + file.ID + "/view?usp=drivesdk", ThumbnailLink: fakeThumbnailLink(file),
+		Size: size, Trashed: file.Trashed,
 	}
+}
+
+func fakeThumbnailLink(file FakeFile) string {
+	if file.Thumbnail == nil {
+		return ""
+	}
+	return "https://lh3.googleusercontent.com/drive-storage/fake-" + file.ID + "=s220"
+}
+
+// Thumbnail implements Store: it answers by link, like Drive does.
+func (f *Fake) Thumbnail(_ context.Context, file File) (Image, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.Err != nil {
+		return Image{}, f.Err
+	}
+	if file.ThumbnailLink == "" {
+		return Image{}, ErrNoThumbnail
+	}
+	for _, stored := range f.Files {
+		if fakeThumbnailLink(stored) == file.ThumbnailLink {
+			f.Thumbnails = append(f.Thumbnails, stored.ID)
+			return Image{Bytes: slices.Clone(stored.Thumbnail), MIMEType: stored.ThumbnailType}, nil
+		}
+	}
+	return Image{}, ErrNotFound
+}
+
+// Download implements Store.
+func (f *Fake) Download(_ context.Context, id string, limit int64) ([]byte, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.Err != nil {
+		return nil, f.Err
+	}
+	for _, file := range f.Files {
+		if file.ID != id {
+			continue
+		}
+		f.Downloads = append(f.Downloads, id)
+		if int64(len(file.Content)) > limit {
+			return nil, ErrTooLarge
+		}
+		return slices.Clone(file.Content), nil
+	}
+	return nil, ErrNotFound
 }
 
 // Find returns the folder called name under parentID, or nil.
