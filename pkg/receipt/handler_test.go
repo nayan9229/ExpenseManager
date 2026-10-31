@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -259,5 +260,87 @@ func TestThumbBeforeDriveHasMadeOneIsNotFound(t *testing.T) {
 	}
 	if got := a.header.Get("Cache-Control"); got != "no-store" {
 		t.Errorf("Cache-Control = %q, want no-store", got)
+	}
+}
+
+func TestASessionIsRequired(t *testing.T) {
+	f := newFixture(t)
+	id := saveReceipt(t, f, receiptstore.FakeFile{ID: "receipt-1", Name: "x.jpg", MIMEType: "image/jpeg", Content: photo, Thumbnail: drivePNG, ThumbnailType: "image/png"})
+
+	for _, query := range []string{"?id=" + id, "?id=" + id + "&thumb=1"} {
+		a := get(t, f, http.MethodGet, query, nil)
+
+		if a.status != http.StatusUnauthorized || a.body["code"] != "NOT_PAIRED" {
+			t.Errorf("%s: got %d %s, want 401 NOT_PAIRED", query, a.status, a.raw)
+		}
+	}
+	if len(f.store.Downloads)+len(f.store.Thumbnails) != 0 {
+		t.Errorf("Drive was read without a Session")
+	}
+}
+
+func TestOnlyGETIsAccepted(t *testing.T) {
+	f := newFixture(t)
+
+	a := get(t, f, http.MethodPost, "?id=receipt-1", pairedCookie(t))
+
+	if a.status != http.StatusMethodNotAllowed || a.header.Get("Allow") != "GET" {
+		t.Fatalf("got %d Allow %q, want 405 Allow GET", a.status, a.header.Get("Allow"))
+	}
+}
+
+func TestAMissingOrMalformedIDIsABadRequest(t *testing.T) {
+	f := newFixture(t)
+
+	for _, query := range []string{"", "?id=", "?id=..%2Fabout", "?id=a%20b", "?thumb=1"} {
+		a := get(t, f, http.MethodGet, query, pairedCookie(t))
+
+		if a.status != http.StatusBadRequest || a.body["code"] != "BAD_REQUEST" {
+			t.Errorf("%q: got %d %s, want 400 BAD_REQUEST", query, a.status, a.raw)
+		}
+	}
+}
+
+// The proxy answers on the app's own origin, so a file someone dropped into
+// the Receipt Store by hand must never be served as something a browser
+// would run.
+func TestAFileThatIsNotAPhotoOrPDFIsServedAsADownload(t *testing.T) {
+	f := newFixture(t)
+	id := saveReceipt(t, f, receiptstore.FakeFile{ID: "page", Name: "x.html", MIMEType: "text/html", Content: []byte("<script>alert(1)</script>")})
+
+	a := get(t, f, http.MethodGet, "?id="+id, pairedCookie(t))
+
+	if a.status != http.StatusOK {
+		t.Fatalf("status = %d, want 200", a.status)
+	}
+	if got := a.header.Get("Content-Type"); got != "application/octet-stream" {
+		t.Errorf("Content-Type = %q, want application/octet-stream", got)
+	}
+	if got := a.header.Get("Content-Disposition"); got != "attachment" {
+		t.Errorf("Content-Disposition = %q, want attachment", got)
+	}
+}
+
+func TestAPDFReceiptIsServedAsAPDF(t *testing.T) {
+	f := newFixture(t)
+	pdf := []byte("%PDF-1.7 one page")
+	id := saveReceipt(t, f, receiptstore.FakeFile{ID: "bill", Name: "x.pdf", MIMEType: "application/pdf", Content: pdf})
+
+	a := get(t, f, http.MethodGet, "?id="+id, pairedCookie(t))
+
+	if a.status != http.StatusOK || a.header.Get("Content-Type") != "application/pdf" || !bytes.Equal(a.raw, pdf) {
+		t.Fatalf("got %d %q %q, want 200 application/pdf with the bytes", a.status, a.header.Get("Content-Type"), a.raw)
+	}
+}
+
+func TestADriveOutageIsABadGatewayThatIsNotCached(t *testing.T) {
+	f := newFixture(t)
+	id := saveReceipt(t, f, receiptstore.FakeFile{ID: "receipt-1", Name: "x.jpg", MIMEType: "image/jpeg", Content: photo})
+	f.store.Err = errors.New("googleapi: Error 503: backend error")
+
+	a := get(t, f, http.MethodGet, "?id="+id, pairedCookie(t))
+
+	if a.status != http.StatusBadGateway || a.body["code"] != "GOOGLE_ERROR" || a.header.Get("Cache-Control") != "no-store" {
+		t.Fatalf("got %d %s Cache-Control %q, want 502 GOOGLE_ERROR no-store", a.status, a.raw, a.header.Get("Cache-Control"))
 	}
 }

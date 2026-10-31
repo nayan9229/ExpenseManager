@@ -8,6 +8,7 @@ package receipt
 import (
 	"errors"
 	"net/http"
+	"regexp"
 	"strconv"
 
 	"github.com/nayan9229/ExpenseManager/pkg/deps"
@@ -69,6 +70,10 @@ func (s Service) serve(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx := r.Context()
 	id := r.URL.Query().Get("id")
+	if !driveID.MatchString(id) {
+		httpjson.WriteError(w, http.StatusBadRequest, "BAD_REQUEST", "Pass the Receipt's Drive file ID as ?id=")
+		return
+	}
 	file, err := receiptstore.Locate(ctx, s.Store, s.FolderID, id)
 	if err != nil {
 		writeStoreError(w, err)
@@ -121,8 +126,23 @@ func writeTooLarge(w http.ResponseWriter, file receiptstore.File) {
 	})
 }
 
+// driveID is the shape of a Drive file ID.
+var driveID = regexp.MustCompile(`^[A-Za-z0-9_-]{1,128}$`)
+
+// servable are the types a Receipt may be shown as (spec: images and PDF).
+// The proxy answers on the app's origin, so anything else (an HTML file
+// dropped into the folder by hand) goes out as an opaque download.
+var servable = map[string]bool{
+	"image/jpeg": true, "image/png": true, "image/webp": true, "image/gif": true,
+	"image/heic": true, "image/heif": true, "application/pdf": true,
+}
+
 func writeBytes(w http.ResponseWriter, mimeType string, body []byte) {
 	h := w.Header()
+	if !servable[mimeType] {
+		mimeType = "application/octet-stream"
+		h.Set("Content-Disposition", "attachment")
+	}
 	h.Set("Content-Type", mimeType)
 	h.Set("Content-Length", strconv.Itoa(len(body)))
 	h.Set("Cache-Control", cacheFor)
