@@ -6,6 +6,11 @@ package handler
 // `vercel dev` server rewrites the first "package <word>" it finds in the file
 // to "package main", so a leading comment that contains those words breaks
 // the local build.
+//
+// Each file exports one differently named function (Auth, Bootstrap, ...):
+// the builder picks the first exported func with the http.HandlerFunc shape
+// whatever it is called, and `go vet ./...` compiles api/ as one package, so
+// two files could not both export `Handler`.
 
 import (
 	"net/http"
@@ -13,7 +18,7 @@ import (
 	"github.com/nayan9229/ExpenseManager/pkg/auth"
 )
 
-// Handler serves /api/auth.
-func Handler(w http.ResponseWriter, r *http.Request) {
+// Auth serves /api/auth.
+func Auth(w http.ResponseWriter, r *http.Request) {
 	auth.Handler(w, r)
 }

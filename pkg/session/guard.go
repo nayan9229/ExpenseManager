@@ -14,9 +14,9 @@ import (
 // 401 NOT_PAIRED without a valid Session. The verified Claims are put in the
 // request context for FromContext.
 //
-//	// api/expenses.go
+//	// pkg/expenses/handler.go
 //	func Handler(w http.ResponseWriter, r *http.Request) {
-//		session.Require(expenses.Handler)(w, r)
+//		session.Require(serve)(w, r)
 //	}
 func Require(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
