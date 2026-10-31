@@ -104,10 +104,51 @@ export type RecurringRule = {
   dueDayOfMonth: number
 }
 
+/** What the Household owes a Member who paid from their own pocket. */
+export type ReimbursementStatus = 'none' | 'pending' | 'done'
+
+/** One Expenses row as the server returns it. */
+export type Expense = {
+  /** UUID generated on the device before the first send. */
+  id: string
+  /** ISO-8601 in IST, set by the server. */
+  createdAt: string
+  updatedAt: string
+  /** `YYYY-MM-DD` (IST calendar date). */
+  expenseDate: string
+  /** Member IDs; an unknown one renders as "Unknown". */
+  loggedBy: string
+  paidBy: string
+  /** Rupees, at most two decimals. */
+  amount: number
+  currency: 'INR'
+  category: string
+  merchantNote: string
+  paymentMethod: PaymentMethod
+  driveFileId: string
+  driveViewUrl: string
+  fileHash: string
+  reimbursementStatus: ReimbursementStatus
+  status: 'active' | 'deleted'
+}
+
+/** What a create sends: the Expense minus everything the server sets. */
+export type CreateExpenseInput = Pick<
+  Expense,
+  'id' | 'expenseDate' | 'loggedBy' | 'paidBy' | 'amount' | 'category' | 'merchantNote' | 'paymentMethod' | 'reimbursementStatus'
+>
+
+/** The answer to a create: the stored Expense, and whether it was already there. */
+export type CreateExpenseResult = {
+  expense: Expense
+  /** True when the server already held this ID (a retried create): nothing was appended. */
+  replayed: boolean
+}
+
 /** What the `expenses` GET returns: everything a device needs to start. */
 export type ReadModel = {
-  /** Empty until ticket 04 reads the date window. */
-  expenses: unknown[]
+  /** Active Expenses in the window (default 90 days back to tomorrow, IST), newest first. */
+  expenses: Expense[]
   members: Member[]
   categories: Category[]
   recurringRules: RecurringRule[]
@@ -140,9 +181,19 @@ export async function runBootstrap(fetchImpl: typeof fetch = fetch): Promise<Boo
   return readJson<BootstrapReport>(res)
 }
 
-/** Loads the read model from the `expenses` function. */
-export async function getReadModel(fetchImpl: typeof fetch = fetch): Promise<ReadModel> {
-  const res = await fetchImpl('/api/expenses', {
+/** An inclusive `YYYY-MM-DD` window; a missing end takes the server default. */
+export type ExpenseWindow = { from?: string; to?: string }
+
+/**
+ * Loads the read model from the `expenses` function, optionally for a wider
+ * or narrower date window than the default (Admin Mode's month view).
+ */
+export async function getReadModel(fetchImpl: typeof fetch = fetch, window: ExpenseWindow = {}): Promise<ReadModel> {
+  const query = new URLSearchParams()
+  if (window.from) query.set('from', window.from)
+  if (window.to) query.set('to', window.to)
+  const qs = query.toString()
+  const res = await fetchImpl(qs ? `/api/expenses?${qs}` : '/api/expenses', {
     method: 'GET',
     headers: { Accept: 'application/json' },
     credentials: 'same-origin',
@@ -156,4 +207,20 @@ export async function getReadModel(fetchImpl: typeof fetch = fetch): Promise<Rea
     ledgerUrl: typeof body.ledgerUrl === 'string' ? body.ledgerUrl : '',
     serverTime: typeof body.serverTime === 'string' ? body.serverTime : '',
   }
+}
+
+/**
+ * Creates an Expense. The `id` is generated once on the device, so sending
+ * the same input again after a lost response is answered with the stored
+ * row (200) instead of a second row.
+ */
+export async function createExpense(input: CreateExpenseInput, fetchImpl: typeof fetch = fetch): Promise<CreateExpenseResult> {
+  const res = await fetchImpl('/api/expenses', {
+    method: 'POST',
+    headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+    credentials: 'same-origin',
+    body: JSON.stringify(input),
+  })
+  const expense = await readJson<Expense>(res)
+  return { expense, replayed: res.status === 200 }
 }

@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { ApiError, getReadModel, getSessionState, pairDevice, runBootstrap } from './api'
+import { ApiError, createExpense, getReadModel, getSessionState, pairDevice, runBootstrap, type CreateExpenseInput, type Expense } from './api'
 
 type Seen = { method: string; body: string | null; contentType: string | null }
 
@@ -123,5 +123,73 @@ describe('getReadModel', () => {
   test('a missing Ledger surfaces as LEDGER_NOT_FOUND so the app can re-run Bootstrap', async () => {
     const call = getReadModel(fakeEndpoint('/api/expenses', 404, { code: 'LEDGER_NOT_FOUND', message: 'run Bootstrap' }))
     await expect(call).rejects.toMatchObject({ status: 404, code: 'LEDGER_NOT_FOUND' })
+  })
+})
+
+describe('getReadModel window', () => {
+  test('asks for a from/to window when one is given', async () => {
+    const urls: string[] = []
+    const fetchImpl: typeof fetch = async (input) => {
+      urls.push(String(input))
+      return Response.json({ expenses: [], members: [], categories: [], recurringRules: [], ledgerUrl: '', serverTime: '' })
+    }
+
+    await getReadModel(fetchImpl, { from: '2026-01-01', to: '2026-01-31' })
+    await getReadModel(fetchImpl, { from: '2026-01-01' })
+
+    expect(urls).toEqual(['/api/expenses?from=2026-01-01&to=2026-01-31', '/api/expenses?from=2026-01-01'])
+  })
+})
+
+describe('createExpense', () => {
+  const input: CreateExpenseInput = {
+    id: '6f1c2a52-8a0e-4d7b-9d55-0b9e1c3f7a10',
+    expenseDate: '2026-10-30',
+    loggedBy: 'ramesh',
+    paidBy: 'ramesh',
+    amount: 450,
+    category: 'Medical & Pharmacy',
+    merchantNote: 'medicines for Papa',
+    paymentMethod: 'Cash',
+    reimbursementStatus: 'none',
+  }
+  const stored: Expense = {
+    ...input,
+    createdAt: '2026-10-31T09:15:00+05:30',
+    updatedAt: '2026-10-31T09:15:00+05:30',
+    currency: 'INR',
+    driveFileId: '',
+    driveViewUrl: '',
+    fileHash: '',
+    status: 'active',
+  }
+
+  function fakeCreate(status: number, body: unknown, seen: { method: string; body: unknown }[]): typeof fetch {
+    return async (input, init) => {
+      if (String(input) !== '/api/expenses') throw new Error(`unexpected request to ${String(input)}`)
+      seen.push({ method: init?.method ?? 'GET', body: JSON.parse(String(init?.body)) })
+      return Response.json(body, { status })
+    }
+  }
+
+  test('POSTs the Expense as JSON and returns what the server stored', async () => {
+    const seen: { method: string; body: unknown }[] = []
+
+    const result = await createExpense(input, fakeCreate(201, stored, seen))
+
+    expect(result).toEqual({ expense: stored, replayed: false })
+    expect(seen).toEqual([{ method: 'POST', body: input }])
+  })
+
+  test('a 200 is an idempotent replay of an Expense already in the Ledger', async () => {
+    const result = await createExpense(input, fakeCreate(200, { ...stored, merchantNote: 'first try' }, []))
+
+    expect(result).toEqual({ expense: { ...stored, merchantNote: 'first try' }, replayed: true })
+  })
+
+  test('a rejected Expense surfaces the server code', async () => {
+    const call = createExpense(input, fakeCreate(422, { code: 'UNKNOWN_CATEGORY', message: 'not a Category' }, []))
+    await expect(call).rejects.toMatchObject({ status: 422, code: 'UNKNOWN_CATEGORY' })
+    await expect(call).rejects.toBeInstanceOf(ApiError)
   })
 })
