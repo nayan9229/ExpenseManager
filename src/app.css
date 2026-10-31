@@ -1,0 +1,41 @@
+@import "tailwindcss";
+
+/*
+ * Warm Minimalism design tokens (spec: "Design system").
+ * Tailwind v4 reads these CSS-first tokens and generates the utilities:
+ * bg-warm-white, text-mocha, border-sand, min-h-touch, and so on.
+ */
+@theme {
+  /* Palette: only these six colours exist in the app. */
+  --color-*: initial;
+  --color-warm-white: #f3ede1; /* page background */
+  --color-sand: #d8c9ae; /* raised surfaces; never used as text on Warm White */
+  --color-mocha: #4a3728; /* body text and dark surfaces */
+  --color-olive-sage: #6e7250; /* positive accent */
+  --color-terracotta: #a9603f; /* alerts, over-Budget */
+  --color-brass: #a98545; /* badges */
+
+  /* System font stack. */
+  --font-sans:
+    system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif;
+
+  /* Minimum size of anything a finger taps. */
+  --spacing-touch: 56px;
+}
+
+@layer base {
+  /* Base font 18px: every rem in the app scales from here. */
+  html {
+    font-size: 18px;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    min-height: 100dvh;
+    background-color: var(--color-warm-white);
+    color: var(--color-mocha);
+    font-family: var(--font-sans);
+    /* Buttons, not swipes: stop the browser from treating drags as gestures. */
+    overscroll-behavior-y: none;
+  }
+}
