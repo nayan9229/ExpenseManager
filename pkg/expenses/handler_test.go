@@ -13,6 +13,7 @@ import (
 
 	"github.com/nayan9229/ExpenseManager/pkg/expenses"
 	"github.com/nayan9229/ExpenseManager/pkg/ledger"
+	"github.com/nayan9229/ExpenseManager/pkg/receiptstore"
 	"github.com/nayan9229/ExpenseManager/pkg/session"
 )
 
@@ -30,8 +31,12 @@ const (
 // fixedNow is the server clock in the fixture: 31 Oct 2026, 09:15 IST.
 var fixedNow = time.Date(2026, 10, 31, 9, 15, 0, 0, ledger.IST)
 
+// householdID is the Drive folder the fixture's Receipt Store lives in.
+const householdID = "household-folder"
+
 type fixture struct {
 	ledger *ledger.Fake
+	store  *receiptstore.Fake
 	srv    *httptest.Server
 }
 
@@ -40,7 +45,7 @@ type fixture struct {
 func newFixture(t *testing.T) fixture {
 	t.Helper()
 	t.Setenv("JWT_SECRET", jwtSecret)
-	f := fixture{ledger: ledger.NewFake()}
+	f := fixture{ledger: ledger.NewFake(), store: receiptstore.NewFake()}
 	f.ledger.Seed(ledger.Members,
 		[]string{"admin", "Admin", "admin", "UPI", "1234", "#6E7250"},
 		[]string{"ramesh", "Ramesh", "parent", "Cash", "0123", "#A98545"},
@@ -54,7 +59,7 @@ func newFixture(t *testing.T) fixture {
 		[]string{"rent", "Rent", "25000", "Household & Help", "1"},
 	)
 	f.ledger.Seed(ledger.Expenses)
-	svc := expenses.Service{Ledger: f.ledger, Now: func() time.Time { return fixedNow }}
+	svc := expenses.Service{Ledger: f.ledger, Store: f.store, FolderID: householdID, Now: func() time.Time { return fixedNow }}
 	f.srv = httptest.NewServer(svc.Handler())
 	t.Cleanup(f.srv.Close)
 	return f

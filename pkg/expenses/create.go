@@ -19,8 +19,8 @@ import (
 // (spec "Expense API contract", Create). The server sets the timestamps,
 // Currency and Status.
 //
-// Ticket 06 adds driveFileId, fileHash and force; unknown fields are
-// ignored so an older or newer client never fails to decode.
+// Unknown fields are ignored so an older or newer client never fails to
+// decode.
 type CreateRequest struct {
 	ID          string `json:"id"`
 	ExpenseDate string `json:"expenseDate"`
@@ -34,6 +34,13 @@ type CreateRequest struct {
 	// ReimbursementStatus defaults to none; the Quick Expense "I paid from
 	// my own pocket" toggle sends pending.
 	ReimbursementStatus string `json:"reimbursementStatus"`
+	// DriveFileID is the Receipt the browser uploaded through `upload-url`,
+	// still under its temporary name; blank for an Expense without one.
+	DriveFileID string `json:"driveFileId"`
+	// FileHash is hex SHA-256 of the original file, for the duplicate check.
+	FileHash string `json:"fileHash"`
+	// Force saves even when FileHash matches an active Expense ("Add anyway").
+	Force bool `json:"force"`
 }
 
 // MaxAmount is one crore rupees, the largest Expense the spec allows.
@@ -178,6 +185,11 @@ func (s Service) create(w http.ResponseWriter, r *http.Request) {
 	if verr != nil {
 		httpjson.WriteError(w, http.StatusUnprocessableEntity, verr.Code, verr.Message)
 		return
+	}
+	if req.DriveFileID != "" || req.FileHash != "" {
+		if !s.attachReceipt(w, r, req, snap.Rows[ledger.Expenses], &expense) {
+			return
+		}
 	}
 	if err := s.Ledger.Append(r.Context(), ledger.Expenses, [][]string{expense.Row()}); err != nil {
 		writeLedgerError(w, err)

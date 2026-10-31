@@ -16,12 +16,17 @@ import (
 	"github.com/nayan9229/ExpenseManager/pkg/deps"
 	"github.com/nayan9229/ExpenseManager/pkg/httpjson"
 	"github.com/nayan9229/ExpenseManager/pkg/ledger"
+	"github.com/nayan9229/ExpenseManager/pkg/receiptstore"
 	"github.com/nayan9229/ExpenseManager/pkg/session"
 )
 
-// Service is the function with its Ledger injected.
+// Service is the function with its Ledger and Receipt Store injected.
 type Service struct {
 	Ledger ledger.Ledger
+	// Store and FolderID are the Receipt Store a create's Drive_File_ID must
+	// point into (FolderID is GOOGLE_DRIVE_FOLDER_ID).
+	Store    receiptstore.Store
+	FolderID string
 	// Now is the server clock; nil means time.Now. Tests pin it.
 	Now func() time.Time
 }
@@ -92,7 +97,7 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 			httpjson.WriteError(w, http.StatusInternalServerError, "SERVER_MISCONFIGURED", err.Error())
 			return
 		}
-		Service{Ledger: d.Ledger}.serve(w, r)
+		Service{Ledger: d.Ledger, Store: d.Store, FolderID: d.FolderID}.serve(w, r)
 	})(w, r)
 }
 
