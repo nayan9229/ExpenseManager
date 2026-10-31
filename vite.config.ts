@@ -50,6 +50,13 @@ export default defineConfig({
     }),
   ],
   server: {
+    // `vercel dev` starts Vite through `npm run dev` and expects it on the
+    // port it hands over in $PORT; without this it never detects the server.
+    port: Number(process.env['PORT']) || 5173,
+    strictPort: Boolean(process.env['PORT']),
+    // `vercel dev` caches a whole Go toolchain under .vercel/; keep the
+    // watcher (and its tsconfig detection) out of it.
+    watch: { ignored: ['**/.vercel/**'] },
     // `vercel dev` serves this app on :3000 and proxies to Vite itself, so
     // this proxy only matters when running `npm run dev` directly: it sends
     // /api/* to a `vercel dev` instance running alongside.

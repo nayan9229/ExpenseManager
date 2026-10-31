@@ -1,6 +1,11 @@
-// Package handler is the one package name shared by every file in api/, as
-// the Vercel Go builder compiles the directory as a single package.
 package handler
+
+// Every file in api/ is one Vercel function and all of them share this
+// `handler` name, because the Go builder compiles the directory as a single
+// unit. Keep the first line of every file here the bare clause above: the
+// `vercel dev` server rewrites the first "package <word>" it finds in the file
+// to "package main", so a leading comment that contains those words breaks
+// the local build.
 
 import (
 	"net/http"
