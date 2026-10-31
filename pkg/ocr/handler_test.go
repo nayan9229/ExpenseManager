@@ -229,6 +229,7 @@ func TestTheReceiptNumberIsReadAsTextOrNull(t *testing.T) {
 		{"kept as printed, trimmed", `"  INV/26/0045  "`, "INV/26/0045"},
 		{"not on the Receipt", `null`, nil},
 		{"blank", `"  "`, nil},
+		{"blank with tabs and newlines", `"\t\n "`, nil},
 		{"longer than the Ledger takes", `"` + strings.Repeat("9", 41) + `"`, nil},
 	}
 	for _, c := range cases {
@@ -243,6 +244,14 @@ func TestTheReceiptNumberIsReadAsTextOrNull(t *testing.T) {
 			}
 			if v, ok := a.body["receiptNumber"]; !ok || v != c.want {
 				t.Errorf("receiptNumber = %#v (present %v), want %#v", v, ok, c.want)
+			}
+			// The model said 0.55 for every case; no reading is no confidence.
+			wantConfidence := 0.55
+			if c.want == nil {
+				wantConfidence = 0
+			}
+			if got := a.body["confidence"].(map[string]any)["receiptNumber"]; got != wantConfidence {
+				t.Errorf("confidence.receiptNumber = %v, want %v", got, wantConfidence)
 			}
 		})
 	}
