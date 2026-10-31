@@ -15,6 +15,7 @@
 import { ApiError, createExpense, deleteExpense, updateExpense, type CreateExpenseInput, type Expense, type ReadModel, type UpdateExpenseInput } from './api'
 import type { ExpenseDb, QueueError, QueueItem, QueueState, QueuedReceipt } from './db'
 import { byNewest } from './quickExpense'
+import { uploadReceipt, type PutFile } from './upload'
 
 /** What a screen asks to save. */
 export type QueueRequest =
@@ -33,6 +34,13 @@ export type OfflineQueueDeps = {
   db: ExpenseDb
   fetchImpl?: typeof fetch
   now?: () => Date
+  /** The Drive PUT and the wait between upload tries (tests pass fakes). */
+  put?: PutFile
+  sleep?: (ms: number) => Promise<void>
+  /** How long Save waits for the server before saying "Saved on phone" (default 8 s). */
+  saveWaitMs?: number
+  /** True when the browser knows it has no network (`navigator.onLine` false): Save does not wait then. */
+  isOffline?: () => boolean
   /** Asks for another Sync run in `ms`; the default keeps one browser timer. Tests record the waits. */
   retryLater?: (ms: number, run: () => void) => void
 }
@@ -145,9 +153,26 @@ export class OfflineQueue {
   private readonly fetchImpl: typeof fetch
   private readonly now: () => Date
   private readonly retryLater: (ms: number, run: () => void) => void
+  private readonly put: PutFile | undefined
+  private readonly sleep: ((ms: number) => Promise<void>) | undefined
+  private readonly saveWaitMs: number
+  private readonly isOffline: () => boolean
 
-  constructor({ db, fetchImpl = (...args) => fetch(...args), now = () => new Date(), retryLater = browserRetry }: OfflineQueueDeps) {
+  constructor({
+    db,
+    fetchImpl = (...args) => fetch(...args),
+    now = () => new Date(),
+    retryLater = browserRetry,
+    put,
+    sleep,
+    saveWaitMs = 8_000,
+    isOffline = () => globalThis.navigator?.onLine === false,
+  }: OfflineQueueDeps) {
     this.db = db
+    this.saveWaitMs = saveWaitMs
+    this.isOffline = isOffline
+    this.put = put
+    this.sleep = sleep
     this.fetchImpl = fetchImpl
     this.now = now
     this.retryLater = retryLater
@@ -183,13 +208,65 @@ export class OfflineQueue {
   async save(request: QueueRequest): Promise<Saved> {
     const item = toItem(request, istTimestamp(this.now()))
     const seq = await this.db.queue.add(item)
-    await this.sync()
+    this.watched.add(seq)
+    const run = this.sync()
+    if (this.isOffline()) {
+      void run
+    } else {
+      let timeout: ReturnType<typeof setTimeout> | undefined
+      await Promise.race([run, new Promise<void>((resolve) => (timeout = setTimeout(resolve, this.saveWaitMs)))])
+      clearTimeout(timeout)
+    }
     const outcome = this.outcomes.get(seq)
+    this.watched.delete(seq)
+    this.outcomes.delete(seq)
+    if (outcome?.kind === 'refused') {
+      // The screen is still open: hand the refusal back to it (the draft is
+      // kept, a fix and Save again replays the same ID) rather than leave it
+      // waiting in the queue.
+      await this.discard(seq)
+      throw outcome.cause
+    }
+    if (outcome?.kind === 'done' && outcome.gone) throw outcome.gone
     if (outcome?.kind === 'done') return { expense: request.kind === 'delete' ? null : (outcome.expense ?? null), queued: false }
     const shown = request.kind === 'delete' ? undefined : (await this.readModel())?.expenses.find((e) => e.id === item.expenseId)
     return { expense: shown ?? (item.kind === 'create' ? optimisticExpense(item.payload, item.receipt, item.queuedAt) : null), queued: true }
   }
 
+  /**
+   * Sends a refused item again (Retry). `force` saves past a 409
+   * DUPLICATE_RECEIPT ("Add anyway"). Resolves when that Sync run ends.
+   */
+  async retry(seq: number, { force = false } = {}): Promise<SyncReport> {
+    const item = await this.db.queue.get(seq)
+    if (item) {
+      const changes: Partial<QueueItem> = { state: 'pending' }
+      if (item.kind === 'create') {
+        if (force) Object.assign(changes, { payload: { ...item.payload, force: true } })
+        // The uploaded file left the Receipt Store: upload the kept copy again.
+        if (item.lastError?.code === 'RECEIPT_NOT_IN_STORE') Object.assign(changes, { uploadedFileId: undefined })
+      }
+      await this.db.queue.update(seq, changes)
+    }
+    return this.sync()
+  }
+
+  /**
+   * Drops an item from the queue (Discard), which takes its change off the
+   * list. Discarding a create also drops the later edits and delete of that
+   * Expense: they could only fail once it never existed.
+   */
+  async discard(seq: number): Promise<void> {
+    await this.db.transaction('rw', this.db.queue, async () => {
+      const item = await this.db.queue.get(seq)
+      if (!item) return
+      await this.db.queue.delete(seq)
+      if (item.kind === 'create') await this.db.queue.where('expenseId').equals(item.expenseId).and((i) => (i.seq ?? 0) > seq).delete()
+    })
+  }
+
+  /** Items an open screen is waiting on, and what became of them. */
+  private readonly watched = new Set<number>()
   private readonly outcomes = new Map<number, Outcome>()
   private running: Promise<SyncReport> | null = null
   private again = false
@@ -218,17 +295,24 @@ export class OfflineQueue {
 
   private async drain(): Promise<SyncReport> {
     let synced = 0
+    let unpaired = false
     for (;;) {
       const next = nextToSend(await this.items())
       if (!next || next.seq === undefined) break
       const outcome = await this.send(next)
-      this.outcomes.set(next.seq, outcome)
+      if (this.watched.has(next.seq)) this.outcomes.set(next.seq, outcome)
       if (outcome.kind === 'done') {
         await this.settle(next.seq, outcome)
         synced++
         continue
       }
       const attempts = next.attempts + 1
+      if (outcome.kind === 'unpaired') {
+        // Not this item's fault: it waits for the phone to be paired again.
+        await this.db.queue.update(next.seq, { lastError: outcome.error })
+        unpaired = true
+        break
+      }
       if (outcome.kind === 'refused') {
         await this.db.queue.update(next.seq, { attempts, lastError: outcome.error, state: 'needs-attention' })
         continue
@@ -237,22 +321,51 @@ export class OfflineQueue {
       this.retryLater(retryDelay(attempts), () => void this.sync())
       break
     }
-    return { synced, remaining: await this.db.queue.count() }
+    return { synced, remaining: await this.db.queue.count(), unpaired }
   }
 
   /** One request (or, for a create with a Receipt, the upload and then the request). */
   private async send(item: QueueItem): Promise<Outcome> {
     try {
       if (item.kind === 'create') {
-        const { expense } = await createExpense(item.payload, this.fetchImpl)
+        const { expense } = await createExpense(await this.withReceipt(item), this.fetchImpl)
         return { kind: 'done', expense }
       }
       if (item.kind === 'update') return { kind: 'done', expense: await updateExpense(item.payload, this.fetchImpl) }
       await deleteExpense(item.payload.id, this.fetchImpl)
       return { kind: 'done', removed: item.payload.id }
     } catch (err) {
-      return { kind: isTransient(err) ? 'transient' : 'refused', error: toQueueError(err) }
+      if (err instanceof ApiError && err.code === 'EXPENSE_NOT_FOUND' && item.kind !== 'create') {
+        // Deleted on another phone: a delete is done; an edit has nothing
+        // left to change, so it is dropped together with the Expense.
+        return { kind: 'done', removed: item.expenseId, ...(item.kind === 'update' ? { gone: err } : {}) }
+      }
+      const error = toQueueError(err)
+      if (err instanceof ApiError && err.status === 401) return { kind: 'unpaired', error }
+      return isTransient(err) ? { kind: 'transient', error } : { kind: 'refused', error, cause: err }
     }
+  }
+
+  /**
+   * The create to send. A Receipt kept on the phone is uploaded first
+   * (pipeline steps 4 and 5: a fresh session, one PUT, retried from scratch),
+   * and OCR is skipped so the fields the Member typed stay as they are. The
+   * file ID is written down at once, so a failed POST never uploads twice.
+   */
+  private async withReceipt(item: Extract<QueueItem, { kind: 'create' }>): Promise<CreateExpenseInput> {
+    if (!item.receipt) return item.payload
+    let fileId = item.uploadedFileId
+    if (!fileId) {
+      const { blob, mimeType, ext } = item.receipt
+      const uploaded = await uploadReceipt(
+        { blob, name: `${item.payload.id}.${ext}`, mimeType, expenseDate: item.payload.expenseDate },
+        { fetchImpl: this.fetchImpl, ...(this.put ? { put: this.put } : {}), ...(this.sleep ? { sleep: this.sleep } : {}) },
+      )
+      fileId = uploaded.fileId
+      const id = fileId
+      if (item.seq !== undefined) await this.db.queue.update(item.seq, (stored) => void (stored.kind === 'create' && (stored.uploadedFileId = id)))
+    }
+    return { ...item.payload, driveFileId: fileId, fileHash: item.receipt.fileHash }
   }
 
   /** Takes a sent item out of the queue and puts the server's answer into the kept read model, together. */
@@ -269,15 +382,17 @@ export class OfflineQueue {
   }
 }
 
-/** A sent item: the server's copy to keep, or the ID of an Expense to drop. */
-type Done = { kind: 'done'; expense?: Expense; removed?: string }
+/** A sent item: the server's copy to keep, or the ID of an Expense to drop (`gone`: the edit found it deleted). */
+type Done = { kind: 'done'; expense?: Expense; removed?: string; gone?: ApiError }
 
 type Outcome =
   | Done
   /** Worth trying again later by itself. */
   | { kind: 'transient'; error: QueueError }
   /** Refused for good: waits for the Member. */
-  | { kind: 'refused'; error: QueueError }
+  | { kind: 'refused'; error: QueueError; cause: unknown }
+  /** The Session is gone (401): everything waits for pairing. */
+  | { kind: 'unpaired'; error: QueueError }
 
 /** What one Sync run achieved. */
 export type SyncReport = {
@@ -285,4 +400,6 @@ export type SyncReport = {
   synced: number
   /** Items still on the phone. */
   remaining: number
+  /** The server answered 401: the phone must be paired again before anything syncs. */
+  unpaired: boolean
 }

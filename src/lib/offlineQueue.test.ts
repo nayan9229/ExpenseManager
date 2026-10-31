@@ -1,6 +1,6 @@
 import { IDBKeyRange, indexedDB } from 'fake-indexeddb'
 import { describe, expect, test } from 'vitest'
-import type { CreateExpenseInput, Expense, ReadModel } from './api'
+import { ApiError, duplicateReceiptOf, type CreateExpenseInput, type Expense, type ReadModel } from './api'
 import { ExpenseDb } from './db'
 import { OfflineQueue } from './offlineQueue'
 import type { PutFile } from './upload'
@@ -53,7 +53,7 @@ const server0: ReadModel = {
   serverTime: '2026-10-31T09:00:00+05:30',
 }
 
-type Scripted = 'network' | 'lost' | { status: number; code: string; message: string; body?: object }
+type Scripted = 'ok' | 'network' | 'lost' | { status: number; code: string; message: string; body?: object }
 
 /**
  * A fake Household server holding Expense rows by ID, answering the way
@@ -66,6 +66,8 @@ function fakeServer() {
   const calls: string[] = []
   const bodies: unknown[] = []
   const script: Scripted[] = []
+  /** Rows appended to the Ledger, replays excluded. */
+  const appended: string[] = []
   let offline = false
 
   const fetchImpl: typeof fetch = async (input, init) => {
@@ -77,7 +79,7 @@ function fakeServer() {
     calls.push(`${method} ${url}`)
     const body = init?.body ? JSON.parse(String(init.body)) : undefined
     bodies.push(body)
-    if (next && next !== 'lost') return Response.json({ code: next.code, message: next.message, ...next.body }, { status: next.status })
+    if (next && next !== 'lost' && next !== 'ok') return Response.json({ code: next.code, message: next.message, ...next.body }, { status: next.status })
 
     let res: Response
     if (url === '/api/upload-url') {
@@ -89,6 +91,7 @@ function fakeServer() {
         const row = stored(body.id, { ...body, createdAt: '2026-10-31T10:00:00+05:30', updatedAt: '2026-10-31T10:00:00+05:30', driveViewUrl: body.driveFileId ? `https://drive.example/view/${body.driveFileId}` : '' })
         delete (row as Partial<{ force: boolean }>).force
         rows.set(body.id, row)
+        appended.push(body.id)
         res = Response.json(row, { status: 201 })
       }
     } else if (method === 'PUT') {
@@ -116,6 +119,7 @@ function fakeServer() {
 
   return {
     rows,
+    appended,
     calls,
     bodies,
     fetchImpl,
@@ -275,5 +279,215 @@ describe('permanent failures', () => {
     // Nothing more goes out for it until the Member decides.
     await queue.sync()
     expect(server.calls).toHaveLength(2)
+  })
+})
+
+describe('Retry and Discard', () => {
+  async function refusedOffline() {
+    const s = await setup()
+    s.server.goOffline()
+    await s.queue.save({ kind: 'create', payload: input('new-1') })
+    await s.queue.save({ kind: 'update', payload: { id: 'new-1', amount: 500 } })
+    await s.queue.save({ kind: 'update', payload: { id: 'old-1', amount: 999 } })
+    await s.queue.save({ kind: 'delete', id: 'old-1' })
+    s.server.goOnline()
+    const refusal = { status: 422, code: 'INVALID_AMOUNT', message: 'Amount must be more than zero' }
+    s.server.script(refusal, refusal)
+    await s.queue.sync()
+    return s
+  }
+
+  test('discarding a refused create takes the Expense and its later edits off the phone', async () => {
+    const { queue, listed } = await refusedOffline()
+    const [create] = await queue.items()
+    expect(create).toMatchObject({ kind: 'create', state: 'needs-attention' })
+    expect(await listed()).toEqual(['new-1'])
+
+    await queue.discard(create!.seq!)
+
+    expect((await queue.items()).map((i) => [i.kind, i.expenseId])).toEqual([
+      ['update', 'old-1'],
+      ['delete', 'old-1'],
+    ])
+    expect(await listed()).toEqual([])
+  })
+
+  test('discarding a refused edit puts the server values back on the list', async () => {
+    const { queue } = await refusedOffline()
+    const edit = (await queue.items()).find((i) => i.expenseId === 'old-1' && i.kind === 'update')
+    expect(edit?.state).toBe('needs-attention')
+    const del = (await queue.items()).find((i) => i.kind === 'delete')
+    await queue.discard(del!.seq!)
+    expect((await queue.readModel())?.expenses.find((e) => e.id === 'old-1')?.amount).toBe(999)
+
+    await queue.discard(edit!.seq!)
+
+    expect((await queue.readModel())?.expenses.find((e) => e.id === 'old-1')?.amount).toBe(100)
+  })
+
+  test('Retry sends a refused item again, then the changes held behind it', async () => {
+    const { queue, server } = await refusedOffline()
+    const [create] = await queue.items()
+    server.calls.length = 0
+
+    await queue.retry(create!.seq!)
+
+    expect(server.calls).toEqual(['POST /api/expenses', 'PUT /api/expenses'])
+    expect(server.rows.get('new-1')?.amount).toBe(500)
+    expect((await queue.items()).map((i) => i.expenseId)).toEqual(['old-1', 'old-1'])
+  })
+})
+
+describe('exactly once', () => {
+  test('a create whose answer was lost is replayed by its ID and the Ledger holds one row', async () => {
+    const { server, queue, listed } = await setup()
+    server.script('lost')
+
+    const saved = await queue.save({ kind: 'create', payload: input('new-1') })
+    expect(saved.queued).toBe(true)
+    expect(server.appended).toEqual(['new-1'])
+
+    const report = await queue.sync()
+
+    expect(report.synced).toBe(1)
+    expect(server.calls).toEqual(['POST /api/expenses', 'POST /api/expenses'])
+    expect(server.appended).toEqual(['new-1'])
+    expect(await listed()).toEqual(['new-1', 'old-1'])
+    expect(await queue.items()).toEqual([])
+  })
+
+  test('two Sync triggers at once send each item once', async () => {
+    const { server, queue } = await setup()
+    server.goOffline()
+    await queue.save({ kind: 'create', payload: input('new-1') })
+    await queue.save({ kind: 'create', payload: input('new-2') })
+    server.goOnline()
+
+    await Promise.all([queue.sync(), queue.sync(), queue.sync()])
+
+    expect(server.calls).toEqual(['POST /api/expenses', 'POST /api/expenses'])
+  })
+})
+
+describe('a Receipt scanned offline', () => {
+  const receipt = () => ({ blob: new Blob(['jpeg bytes'], { type: 'image/jpeg' }), mimeType: 'image/jpeg', ext: 'jpg', fileHash: 'ab12' })
+
+  test('is kept on the phone, then uploaded and linked on Sync with no OCR', async () => {
+    const { server, queue, puts } = await setup()
+    server.goOffline()
+    await queue.save({ kind: 'create', payload: input('new-1'), receipt: receipt() })
+    expect((await queue.items())[0]).toMatchObject({ receipt: { mimeType: 'image/jpeg', fileHash: 'ab12' } })
+    server.goOnline()
+
+    await queue.sync()
+
+    expect(server.calls).toEqual(['POST /api/upload-url', 'POST /api/expenses'])
+    expect(server.bodies[0]).toEqual({ name: 'new-1.jpg', mimeType: 'image/jpeg', size: 10, expenseDate: '2026-10-31' })
+    expect(puts).toEqual(['https://drive.example/session/new-1.jpg image/jpeg 10'])
+    expect(server.bodies[1]).toMatchObject({ id: 'new-1', driveFileId: 'drive-1', fileHash: 'ab12', merchantNote: 'medicines' })
+    expect(server.rows.get('new-1')).toMatchObject({ driveFileId: 'drive-1', driveViewUrl: 'https://drive.example/view/drive-1' })
+    expect(await queue.items()).toEqual([])
+  })
+
+  test('a create that fails after the upload does not upload the Receipt again', async () => {
+    const { server, queue, puts } = await setup()
+    server.goOffline()
+    await queue.save({ kind: 'create', payload: input('new-1'), receipt: receipt() })
+    server.goOnline()
+    server.script('ok', { status: 503, code: 'HTTP_ERROR', message: 'busy' })
+
+    await queue.sync()
+    await queue.sync()
+
+    expect(puts).toHaveLength(1)
+    expect(server.calls).toEqual(['POST /api/upload-url', 'POST /api/expenses', 'POST /api/expenses'])
+    expect(server.bodies[2]).toMatchObject({ driveFileId: 'drive-1', fileHash: 'ab12' })
+    expect(await queue.items()).toEqual([])
+  })
+})
+
+describe('saving with signal', () => {
+  test('Save waits for the server and shows the stored copy', async () => {
+    const { queue, listed } = await setup()
+
+    const saved = await queue.save({ kind: 'create', payload: input('new-1') })
+
+    expect(saved).toMatchObject({ queued: false, expense: { id: 'new-1', createdAt: '2026-10-31T10:00:00+05:30' } })
+    expect(await queue.items()).toEqual([])
+    expect(await listed()).toEqual(['new-1', 'old-1'])
+  })
+
+  test('a refusal comes back to the open screen instead of waiting in the queue', async () => {
+    const { server, queue, listed } = await setup()
+    const earlier = stored('old-1', { fileHash: 'ab12' })
+    server.script({ status: 409, code: 'DUPLICATE_RECEIPT', message: 'This receipt was already added', body: { expense: earlier } })
+
+    const err = await queue.save({ kind: 'create', payload: input('new-1', { fileHash: 'ab12', driveFileId: 'f1' }) }).catch((e: unknown) => e)
+
+    expect(err).toBeInstanceOf(ApiError)
+    expect(duplicateReceiptOf(err)).toEqual(earlier)
+    expect(await queue.items()).toEqual([])
+    expect(await listed()).toEqual(['old-1'])
+  })
+
+  test('an edit of an Expense deleted on another phone is dropped and the Expense leaves the list', async () => {
+    const { server, queue, listed } = await setup()
+    server.rows.delete('old-1')
+
+    const err = await queue.save({ kind: 'update', payload: { id: 'old-1', amount: 5 } }).catch((e: unknown) => e)
+
+    expect(err).toMatchObject({ code: 'EXPENSE_NOT_FOUND' })
+    expect(await queue.items()).toEqual([])
+    expect(await listed()).toEqual([])
+  })
+
+  test('deleting an Expense already gone from the Ledger counts as deleted', async () => {
+    const { server, queue, listed } = await setup()
+    server.rows.delete('old-1')
+
+    const saved = await queue.save({ kind: 'delete', id: 'old-1' })
+
+    expect(saved.queued).toBe(false)
+    expect(await queue.items()).toEqual([])
+    expect(await listed()).toEqual([])
+  })
+
+  test('a server that does not answer in time does not hold Save: the Expense is saved on the phone', async () => {
+    const db = freshDb()
+    const hanging: typeof fetch = () => new Promise(() => {})
+    const queue = new OfflineQueue({ db, fetchImpl: hanging, saveWaitMs: 5, retryLater: () => {} })
+    await queue.remember(server0)
+
+    const saved = await queue.save({ kind: 'create', payload: input('new-1') })
+
+    expect(saved.queued).toBe(true)
+    expect((await queue.readModel())?.expenses.map((e) => e.id)).toEqual(['new-1', 'old-1'])
+  })
+
+  test('a phone that knows it is offline does not wait at all', async () => {
+    const db = freshDb()
+    const hanging: typeof fetch = () => new Promise(() => {})
+    const queue = new OfflineQueue({ db, fetchImpl: hanging, saveWaitMs: 60_000, isOffline: () => true, retryLater: () => {} })
+
+    const saved = await queue.save({ kind: 'create', payload: input('new-1') })
+
+    expect(saved.queued).toBe(true)
+  })
+})
+
+describe('a lost Session', () => {
+  test('a 401 keeps the item waiting (it is not the item’s fault) and stops Sync', async () => {
+    const { server, queue } = await setup()
+    server.goOffline()
+    await queue.save({ kind: 'create', payload: input('new-1') })
+    await queue.save({ kind: 'create', payload: input('new-2') })
+    server.goOnline()
+    server.script({ status: 401, code: 'NOT_PAIRED', message: 'Pair this phone again' })
+
+    const report = await queue.sync()
+
+    expect(report).toMatchObject({ unpaired: true, synced: 0 })
+    expect(server.calls).toHaveLength(1)
+    expect((await queue.items()).map((i) => i.state)).toEqual(['pending', 'pending'])
   })
 })
