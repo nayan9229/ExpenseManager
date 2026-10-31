@@ -163,7 +163,10 @@ using it is picked on the device (ADR-0002).
    with the Access Code". The first paired device runs **Bootstrap**: it
    creates the `Receipts` folder and the `Expenses_Database` Ledger (four
    tabs with headers, seven Categories, one `admin` Member) in your Drive
-   folder. Bootstrap is safe to run again ("Repair" in Admin Mode does).
+   folder. Bootstrap is safe to run again ("Repair" in Admin Mode does): it
+   recreates a missing tab, freezes row 1, writes the headers into a tab
+   whose row 1 is empty, and never overwrites a row 1 that differs; Repair
+   names that tab and the headers it expects.
 2. **On an iPhone, install first, then pair inside the installed app.** iOS
    keeps the Home Screen app's storage apart from Safari, so a pairing done in
    Safari does not carry over. In Safari: Share, Add to Home Screen, Add; open
