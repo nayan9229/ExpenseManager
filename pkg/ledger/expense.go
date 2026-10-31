@@ -41,6 +41,11 @@ const (
 // Currency is the only currency v1 knows.
 const Currency = "INR"
 
+// MaxReceiptNumberLength caps Receipt_Number, in characters: the
+// `expenses` function refuses a longer one and OCR treats a longer reading
+// as no reading.
+const MaxReceiptNumberLength = 40
+
 // DateLayout is how Expense_Date is written: `YYYY-MM-DD`.
 const DateLayout = "2006-01-02"
 

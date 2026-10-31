@@ -57,10 +57,6 @@ type Confidence struct {
 	ReceiptNumber float64 `json:"receiptNumber"`
 }
 
-// MaxReceiptNumberLength is the longest Receipt Number the Ledger takes
-// (the `expenses` function's limit); a longer reading is no reading.
-const MaxReceiptNumberLength = 40
-
 // fields is the property order: the schema's propertyOrdering and the keys
 // Validate demands.
 var fields = []string{"merchant", "expenseDate", "totalAmount", "taxAmount", "currency", "category", "paymentMethod", "receiptNumber", "confidence", "lineItemSummary"}
@@ -197,9 +193,16 @@ func Validate(a Answer, categories []string) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
-	// A Category the Household does not have is no Category, not a broken
-	// answer: the Admin may have renamed one while the model answered.
-	r.Category = matchCategory(categories, category)
+	// The Category is matched as the `expenses` function will match it on
+	// Save (ledger.FindCategory: case and surrounding spaces ignored) and
+	// given in the Ledger's spelling. One the Household does not have is no
+	// Category, not a broken answer: the Admin may have renamed one while
+	// the model answered.
+	if category != nil {
+		if name, ok := ledger.FindCategory(categories, *category); ok {
+			r.Category = &name
+		}
+	}
 	if r.PaymentMethod, err = optionalString(raw, "paymentMethod"); err != nil {
 		return Result{}, err
 	}
@@ -209,7 +212,7 @@ func Validate(a Answer, categories []string) (Result, error) {
 	if r.ReceiptNumber, err = optionalString(raw, "receiptNumber"); err != nil {
 		return Result{}, err
 	}
-	if r.ReceiptNumber != nil && (*r.ReceiptNumber == "" || utf8.RuneCountInString(*r.ReceiptNumber) > MaxReceiptNumberLength) {
+	if r.ReceiptNumber != nil && (*r.ReceiptNumber == "" || utf8.RuneCountInString(*r.ReceiptNumber) > ledger.MaxReceiptNumberLength) {
 		r.ReceiptNumber = nil
 	}
 	if r.Confidence, err = confidenceOf(raw["confidence"]); err != nil {
@@ -231,21 +234,6 @@ func Validate(a Answer, categories []string) (Result, error) {
 	r.LineItemSummary = *summary
 	r.Model = a.ModelVersion
 	return r, nil
-}
-
-// matchCategory returns the Ledger's spelling of name, or nil when it is
-// not one of categories (case and surrounding spaces ignored).
-func matchCategory(categories []string, name *string) *string {
-	if name == nil {
-		return nil
-	}
-	for _, c := range categories {
-		if strings.EqualFold(c, *name) {
-			found := c
-			return &found
-		}
-	}
-	return nil
 }
 
 // object decodes one JSON object with exactly the keys want: a missing key

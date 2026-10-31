@@ -207,7 +207,7 @@ export type ReceiptFields = {
   force?: boolean
 }
 
-/** The longest Receipt Number the Ledger takes (pkg/expenses MaxReceiptNumberLength). */
+/** The longest Receipt Number the Ledger takes (pkg/ledger MaxReceiptNumberLength). */
 export const MAX_RECEIPT_NUMBER = 40
 
 /** The Expense that already holds this Receipt, when `err` is a 409 DUPLICATE_RECEIPT; otherwise null. */

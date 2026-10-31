@@ -51,9 +51,6 @@ const MaxAmount = 1_00_00_000
 // MaxNoteLength caps Merchant_Note, in characters.
 const MaxNoteLength = 500
 
-// MaxReceiptNumberLength caps Receipt_Number, in characters.
-const MaxReceiptNumberLength = 40
-
 // ValidationError is a request the Ledger must not take; Code is the
 // machine-readable reason the client can switch on.
 type ValidationError struct {

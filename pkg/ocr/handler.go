@@ -106,10 +106,7 @@ func (s Service) serve(w http.ResponseWriter, r *http.Request) {
 		httpjson.WriteError(w, http.StatusBadGateway, "GOOGLE_ERROR", err.Error())
 		return
 	}
-	var categories []string
-	for _, c := range ledger.ParseCategories(snap.Rows[ledger.Categories]) {
-		categories = append(categories, c.Name)
-	}
+	categories := ledger.CategoryNames(ledger.ParseCategories(snap.Rows[ledger.Categories]))
 
 	answer, err := s.OCR.Read(ctx, Receipt{Bytes: content, MIMEType: file.MIMEType, Categories: categories})
 	if err != nil {
