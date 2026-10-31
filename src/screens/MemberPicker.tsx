@@ -18,7 +18,7 @@ type View = { kind: 'tiles' } | { kind: 'pin'; member: Member } | { kind: 'pinNo
  * on a large keypad, checked against `pinHash` on the device (ADR-0002).
  * An Admin whose PIN is still blank in the Ledger is told so (story 13).
  */
-export function ProfileSwitcher({ members, ledgerUrl, onSelect }: Props) {
+export function MemberPicker({ members, ledgerUrl, onSelect }: Props) {
   const [view, setView] = useState<View>({ kind: 'tiles' })
 
   function tap(member: Member) {

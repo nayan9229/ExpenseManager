@@ -186,7 +186,7 @@ using it is picked on the device (ADR-0002).
 ## Managing the Ledger
 
 v1 has no admin forms: the Admin edits the Ledger in Google Sheets ("Open the
-Ledger" in Admin Mode or on the profile switcher). Column order is the
+Ledger" in Admin Mode or on the Member picker). Column order is the
 contract: never reorder or rename columns, only append new ones on the right.
 Blank or malformed cells are tolerated (the row is skipped or defaulted). The
 app picks up edits on its next refresh (within a minute, or on reopening).

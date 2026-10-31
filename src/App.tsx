@@ -13,7 +13,7 @@ import { queryClient, readModelKey, useReadModel } from './lib/readModel'
 import { AdminMode } from './screens/AdminMode'
 import { Gatekeeper } from './screens/Gatekeeper'
 import { PairDevice } from './screens/PairDevice'
-import { ProfileSwitcher } from './screens/ProfileSwitcher'
+import { MemberPicker } from './screens/MemberPicker'
 import { EditExpense } from './screens/EditExpense'
 import { QuickExpense } from './screens/QuickExpense'
 import { ScanReceipt } from './screens/ScanReceipt'
@@ -84,7 +84,7 @@ type View =
 
 /**
  * A paired device: Bootstrap once, load the read model, then either the
- * remembered Member's Simple Mode or the profile switcher. A 401 means the
+ * remembered Member's Simple Mode or the Member picker. A 401 means the
  * Session is gone (secret rotated): back to the Gatekeeper.
  *
  * An Admin who passes the PIN gets Admin Mode for as long as the app stays
@@ -148,7 +148,7 @@ function PairedApp({ onUnpaired }: { onUnpaired: () => void }) {
   const current = admin ?? startingMember(model.data.members, memberId)
   if (!current) {
     return (
-      <ProfileSwitcher
+      <MemberPicker
         members={model.data.members}
         ledgerUrl={ledgerUrl}
         onSelect={(member) => {
