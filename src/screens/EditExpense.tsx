@@ -110,7 +110,7 @@ export function EditExpense({ member, model, expense, onSaved, onDeleted, onCanc
       busy={busy}
       busyLabel={pending === 'deleted' ? 'Save' : 'Saving…'}
       error={error}
-      onSubmit={(draft: ExpenseDraft) => void run(() => saveEdit(toUpdateInput(draft, expense.id)), 'saved', onSaved)}
+      onSubmit={(draft: ExpenseDraft) => void run(() => saveEdit(toUpdateInput(draft, expense.id), { base: expense }), 'saved', onSaved)}
       onCancel={onCancel}
       footer={footer}
     />

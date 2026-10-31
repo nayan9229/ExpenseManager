@@ -1,10 +1,14 @@
 import { Camera, CircleCheck, Keyboard, Pencil, Trash2, Users } from 'lucide-react'
 import { Button } from '../components/Button'
+import { NEEDS_ATTENTION, OfflineQueuePanel, QueueBadge, SAVED_ON_PHONE } from '../components/OfflineQueuePanel'
 import { VoiceEntry, type VoiceResult } from '../components/VoiceEntry'
 import type { Category, Expense, Member } from '../lib/api'
 import { canEdit } from '../lib/editExpense'
 import { dayLabel, istToday } from '../lib/istDate'
+import type { QueueState } from '../lib/db'
+import { waitingStates } from '../lib/offlineQueue'
 import { lastFive } from '../lib/quickExpense'
+import { useOfflineQueue } from '../lib/readModel'
 import { formatRupees } from '../lib/rupees'
 
 type Props = {
@@ -45,6 +49,8 @@ export function SimpleMode({
 }: Props) {
   const today = istToday()
   const mine = lastFive(expenses, member.memberId)
+  const queue = useOfflineQueue()
+  const waiting = waitingStates(queue)
 
   return (
     <main className="mx-auto flex min-h-dvh max-w-md flex-col gap-8 px-5 py-10">
@@ -84,7 +90,8 @@ export function SimpleMode({
         {justSaved && (
           <span className="flex items-center gap-2">
             <CircleCheck aria-hidden="true" className="size-7 shrink-0 text-olive-sage" />
-            Saved {formatRupees(justSaved.amount)} for {justSaved.category}.
+            Saved {formatRupees(justSaved.amount)} for {justSaved.category}
+            {waiting.get(justSaved.id) === 'pending' ? `. ${SAVED_ON_PHONE}.` : '.'}
           </span>
         )}
         {!justSaved && justDeleted && (
@@ -94,6 +101,8 @@ export function SimpleMode({
           </span>
         )}
       </p>
+
+      <OfflineQueuePanel items={queue} expenses={expenses} />
 
       <section className="flex flex-col gap-3">
         <h2 className="text-xl font-bold">Your last five</h2>
@@ -110,6 +119,7 @@ export function SimpleMode({
                 members={members}
                 member={member}
                 today={today}
+                waiting={waiting.get(e.id)}
                 onEdit={canEdit(member, e) ? () => onEdit(e) : undefined}
               />
             ))}
@@ -130,6 +140,7 @@ function ExpenseRow({
   members,
   member,
   today,
+  waiting,
   onEdit,
 }: {
   expense: Expense
@@ -137,6 +148,8 @@ function ExpenseRow({
   members: Member[]
   member: Member
   today: string
+  /** Set while a change to this Expense is still on the phone. */
+  waiting?: QueueState | undefined
   /** Absent when this Member may not change it. */
   onEdit?: () => void
 }) {
@@ -156,8 +169,9 @@ function ExpenseRow({
           <span className="shrink-0 text-base">{dayLabel(expense.expenseDate, today)}</span>
         </p>
         <p className="truncate text-base">{expense.merchantNote || expense.category}</p>
-        {(expense.reimbursementStatus === 'pending' || paidBy) && (
+        {(expense.reimbursementStatus === 'pending' || paidBy || waiting) && (
           <p className="mt-1 flex flex-wrap gap-2 text-base">
+            {waiting && <QueueBadge state={waiting} />}
             {expense.reimbursementStatus === 'pending' && (
               <span className="rounded-full border-2 border-brass px-3">To be paid back</span>
             )}
@@ -175,7 +189,7 @@ function ExpenseRow({
         <button
           type="button"
           onClick={onEdit}
-          aria-label={`Edit ${formatRupees(expense.amount)} for ${expense.category}, ${dayLabel(expense.expenseDate, today)}`}
+          aria-label={`Edit ${formatRupees(expense.amount)} for ${expense.category}, ${dayLabel(expense.expenseDate, today)}${waiting ? `, ${waiting === 'pending' ? SAVED_ON_PHONE : NEEDS_ATTENTION}` : ''}`}
           className={row + ' outline-none focus-visible:ring-4 focus-visible:ring-olive-sage active:scale-[0.98] transition-transform'}
         >
           {body}

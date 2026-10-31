@@ -4,7 +4,7 @@ import { Button } from './components/Button'
 import type { VoiceResult } from './components/VoiceEntry'
 import { ApiError, getSessionState, type Expense } from './lib/api'
 import { forgetMember, rememberMember, rememberedMemberId } from './lib/device'
-import { useReadModel } from './lib/readModel'
+import { queryClient, readModelKey, useReadModel } from './lib/readModel'
 import { Gatekeeper } from './screens/Gatekeeper'
 import { ProfileSwitcher } from './screens/ProfileSwitcher'
 import { EditExpense } from './screens/EditExpense'
@@ -18,23 +18,27 @@ type Boot =
   | { status: 'paired' }
   | { status: 'unreachable' }
 
+/** A read model kept on the device (ticket 09) means this phone was paired and has something to show. */
+const hasKeptReadModel = () => queryClient.getQueryData(readModelKey) !== undefined
+
 /**
  * Boot: ask the `auth` function whether this device holds a Session, then
  * show the Gatekeeper or the paired app. A paired device sees a neutral
- * splash while the answer is on its way and never the Gatekeeper.
+ * splash while the answer is on its way and never the Gatekeeper; one with
+ * a kept read model opens straight away (offline too) while it is asked.
  */
 export default function App() {
-  const [boot, setBoot] = useState<Boot>({ status: 'checking' })
+  const [boot, setBoot] = useState<Boot>(() => (hasKeptReadModel() ? { status: 'paired' } : { status: 'checking' }))
 
   const check = useCallback(async () => {
-    setBoot({ status: 'checking' })
     try {
       const { paired } = await getSessionState()
       setBoot({ status: paired ? 'paired' : 'unpaired' })
     } catch {
       // The server did not answer (offline, or a platform error). Not the
-      // Gatekeeper: a paired phone must never be asked to pair again.
-      setBoot({ status: 'unreachable' })
+      // Gatekeeper: a paired phone must never be asked to pair again. With
+      // a kept read model it is still useful.
+      setBoot({ status: hasKeptReadModel() ? 'paired' : 'unreachable' })
     }
   }, [])
 
@@ -50,7 +54,14 @@ export default function App() {
     case 'paired':
       return <PairedApp onUnpaired={() => setBoot({ status: 'unpaired' })} />
     case 'unreachable':
-      return <Unreachable onRetry={() => void check()} />
+      return (
+        <Unreachable
+          onRetry={() => {
+            setBoot({ status: 'checking' })
+            void check()
+          }}
+        />
+      )
   }
 }
 

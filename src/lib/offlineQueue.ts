@@ -91,6 +91,15 @@ function upsert(model: ReadModel, expense: Expense): ReadModel {
   return { ...model, expenses: [expense, ...model.expenses.filter((e) => e.id !== expense.id)].sort(byNewest) }
 }
 
+/** Per Expense ID: `pending` while a change waits, `needs-attention` when any of its changes was refused. */
+export function waitingStates(items: QueueItem[]): Map<string, QueueState> {
+  const states = new Map<string, QueueState>()
+  for (const item of items) {
+    if (states.get(item.expenseId) !== 'needs-attention') states.set(item.expenseId, item.state)
+  }
+  return states
+}
+
 /**
  * Whether a failure may pass by itself: no answer at all, a server or
  * Google hiccup (5xx), or too many requests (429). Any other 4xx is a
@@ -207,11 +216,7 @@ export class OfflineQueue {
 
   /** Which Expenses have a change still on the phone, and whether one of them needs attention. */
   async waiting(): Promise<Map<string, QueueState>> {
-    const states = new Map<string, QueueState>()
-    for (const item of await this.items()) {
-      if (states.get(item.expenseId) !== 'needs-attention') states.set(item.expenseId, item.state)
-    }
-    return states
+    return waitingStates(await this.items())
   }
 
   /** Writes the change to the queue, then runs Sync and reports what became of it. */

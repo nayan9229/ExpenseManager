@@ -1,4 +1,4 @@
-import { ArrowLeft, Camera, Check, CircleAlert, CircleCheck, CircleDashed, FileText, ImageIcon, RefreshCw, TriangleAlert, X } from 'lucide-react'
+import { ArrowLeft, Camera, Check, CircleAlert, CircleCheck, CircleDashed, CloudOff, FileText, ImageIcon, RefreshCw, TriangleAlert, X } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState, type ChangeEvent } from 'react'
 import { Button } from '../components/Button'
 import { ExpenseForm } from '../components/ExpenseForm'
@@ -8,6 +8,8 @@ import { newDraft, newExpenseId, toCreateInput, type ExpenseDraft } from '../lib
 import { saveExpense } from '../lib/readModel'
 import { MAX_BYTES, NOT_A_RECEIPT, ReceiptRejected, receiptKind } from '../lib/receiptFile'
 import { readyReceipt, sendReceipt, type AttachedReceipt, type ReadyReceipt } from '../lib/receiptPipeline'
+import type { QueuedReceipt } from '../lib/db'
+import { isTransient } from '../lib/offlineQueue'
 import { formatRupees } from '../lib/rupees'
 import { UploadFailed } from '../lib/upload'
 
@@ -105,6 +107,8 @@ type Stage =
   | { kind: 'uploading'; fraction: number }
   | { kind: 'attached'; receipt: AttachedReceipt }
   | { kind: 'failed'; message: string; retryable: boolean }
+  /** No signal: the prepared Receipt is kept and saved with the Expense into the Offline Queue. */
+  | { kind: 'offline' }
   | { kind: 'removed' }
 
 /** The duplicate the server found, and the draft to save if the user adds it anyway. */
@@ -124,6 +128,9 @@ function ReceiptExpense({ file, member, model, onSaved, onCancel, onUnpaired }: 
   // Settles with the attached Receipt, or null when this try failed; Save awaits it.
   const pending = useRef<Promise<AttachedReceipt | null> | null>(null)
   const started = useRef(false)
+  // True when the upload could not happen for network reasons: Save then
+  // keeps the prepared Receipt on the phone and Sync uploads it later.
+  const queueable = useRef(false)
   const isPdf = receiptKind(file) === 'pdf'
 
   const run = useCallback((): Promise<AttachedReceipt | null> => {
@@ -134,6 +141,12 @@ function ReceiptExpense({ file, member, model, onSaved, onCancel, onUnpaired }: 
           ready.current = await readyReceipt(file)
           if (ready.current.prepared.mimeType === 'image/jpeg') setPreview(URL.createObjectURL(ready.current.prepared.blob))
         }
+        queueable.current = false
+        if (globalThis.navigator?.onLine === false) {
+          queueable.current = true
+          setStage({ kind: 'offline' })
+          return null
+        }
         setStage({ kind: 'uploading', fraction: 0 })
         const receipt = await sendReceipt(ready.current, id, initial.expenseDate, {
           onProgress: (fraction) => setStage({ kind: 'uploading', fraction }),
@@ -141,6 +154,7 @@ function ReceiptExpense({ file, member, model, onSaved, onCancel, onUnpaired }: 
         setStage({ kind: 'attached', receipt })
         return receipt
       } catch (err) {
+        queueable.current = ready.current !== null && isTransient(err)
         setStage({ kind: 'failed', message: uploadProblem(err), retryable: !(err instanceof ReceiptRejected) })
         return null
       }
@@ -165,9 +179,15 @@ function ReceiptExpense({ file, member, model, onSaved, onCancel, onUnpaired }: 
     setError(null)
     setDuplicate(null)
     let receipt: AttachedReceipt | null = null
+    // The Receipt could not upload for network reasons: it stays on the
+    // phone with the queued Expense and Sync uploads it later (OCR skipped).
+    let kept: QueuedReceipt | undefined
     if (stage.kind !== 'removed') {
       receipt = await (pending.current ?? Promise.resolve(null))
-      if (!receipt) {
+      if (!receipt && queueable.current && ready.current) {
+        const { prepared, fileHash } = ready.current
+        kept = { blob: prepared.blob, mimeType: prepared.mimeType, ext: prepared.ext, fileHash }
+      } else if (!receipt) {
         setBusy(false)
         setError('The Receipt has not uploaded. Tap Try again at the top, or Save without it.')
         showPanel()
@@ -175,9 +195,10 @@ function ReceiptExpense({ file, member, model, onSaved, onCancel, onUnpaired }: 
       }
     }
     try {
-      const input = toCreateInput(draft, member.memberId, id)
+      const input = { ...toCreateInput(draft, member.memberId, id), ...(force ? { force: true } : {}) }
       const { expense } = await saveExpense(
-        receipt ? { ...input, driveFileId: receipt.fileId, fileHash: receipt.fileHash, ...(force ? { force: true } : {}) } : input,
+        receipt ? { ...input, driveFileId: receipt.fileId, fileHash: receipt.fileHash } : input,
+        kept ? { receipt: kept } : {},
       )
       onSaved(expense)
     } catch (err) {
@@ -238,6 +259,7 @@ function ReceiptExpense({ file, member, model, onSaved, onCancel, onUnpaired }: 
         {stage.kind === 'failed' && (
           <div className="flex flex-col gap-3">
             <p className="text-lg">{stage.message} What you typed below is kept.</p>
+            {queueable.current && <p className="text-lg">Or tap Save: the Receipt stays on this phone and uploads by itself when the signal is back.</p>}
             {stage.retryable && (
               <Button icon={RefreshCw} onClick={() => void run()} className="w-full">
                 Try again
@@ -298,6 +320,13 @@ function StageText({ stage, isPdf, big }: { stage: Stage; isPdf: boolean; big: s
         <p role="alert" className={big + ' text-terracotta'}>
           <TriangleAlert aria-hidden="true" className="mt-1 size-8 shrink-0" />
           The Receipt did not upload
+        </p>
+      )
+    case 'offline':
+      return (
+        <p className={big}>
+          <CloudOff aria-hidden="true" className="mt-1 size-8 shrink-0 text-olive-sage" />
+          No signal. Tap Save: the Receipt stays on this phone and uploads when online.
         </p>
       )
     case 'removed':
