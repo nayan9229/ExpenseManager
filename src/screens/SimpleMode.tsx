@@ -1,4 +1,4 @@
-import { Camera, Check, CircleCheck, Keyboard, Pencil, Trash2, Users } from 'lucide-react'
+import { Camera, Check, CircleCheck, Download, Keyboard, Pencil, Trash2, Users } from 'lucide-react'
 import { useState } from 'react'
 import { Button } from '../components/Button'
 import { UpdateBanner } from '../components/UpdateBanner'
@@ -10,7 +10,7 @@ import { VoiceEntry, type VoiceResult } from '../components/VoiceEntry'
 import type { Category, Expense, Member } from '../lib/api'
 import { dismissInstallHint, installHintDismissed } from '../lib/device'
 import { canEdit } from '../lib/editExpense'
-import { currentInstallPlatform } from '../lib/installPrompt'
+import { currentInstallPlatform, useInstallPrompt } from '../lib/installPrompt'
 import { showsInstallHintInSimpleMode } from '../lib/pairing'
 import { dayLabel, istToday } from '../lib/istDate'
 import type { QueueState } from '../lib/db'
@@ -237,38 +237,62 @@ function ExpenseRow({
 }
 
 /**
- * The iPhone "Add to Home Screen" steps for a device paired in the browser
- * (a scanned QR link pairs Safari). Safari can clear a site's storage after
- * a week without use, and the Home Screen app keeps its own storage, so the
- * app is better installed and paired once more there. Shown until dismissed
- * on this device; never in the Home Screen app itself.
+ * Install guidance for a device paired in the browser (a scanned QR link
+ * skips the Gatekeeper and its install steps). On an iPhone: the "Add to
+ * Home Screen" steps; Safari can clear a site's storage after a week without
+ * use, and the Home Screen app keeps its own storage, so the app is better
+ * installed and paired once more there. On Android: Chrome's Install button
+ * while it is offered (the installed app shares Chrome's pairing). Shown
+ * until dismissed on this device; never in the installed app itself.
  */
 function InstallHint() {
   const [platform] = useState(() => currentInstallPlatform())
   const [dismissed, setDismissed] = useState(() => installHintDismissed())
-  if (platform !== 'ios-safari' && platform !== 'ios-other-browser') return null
-  if (!showsInstallHintInSimpleMode({ platform, dismissed })) return null
+  const prompt = useInstallPrompt()
+  if (!showsInstallHintInSimpleMode({ platform, dismissed, promptAvailable: prompt.available })) return null
+  const dismiss = () => {
+    dismissInstallHint()
+    setDismissed(true)
+  }
+  const hide = (
+    <Button icon={Check} variant={platform === 'android' ? 'secondary' : 'primary'} onClick={dismiss} className="w-full">
+      Got it, hide this
+    </Button>
+  )
+  if (platform === 'ios-safari' || platform === 'ios-other-browser') {
+    return (
+      <IosInstallSteps
+        platform={platform}
+        afterInstall={
+          <>
+            Open <strong>Expenses</strong> from the Home Screen. It asks to be paired once more: ask the Admin for a Pair
+            Code.
+          </>
+        }
+      >
+        <p className="text-base">What you log here is saved either way.</p>
+        {hide}
+      </IosInstallSteps>
+    )
+  }
   return (
-    <IosInstallSteps
-      platform={platform}
-      afterInstall={
-        <>
-          Open <strong>Expenses</strong> from the Home Screen. It asks to be paired once more: ask the Admin for a Pair
-          Code.
-        </>
-      }
-    >
-      <p className="text-base">What you log here is saved either way.</p>
+    <section aria-labelledby="install-title" className="flex flex-col gap-3 rounded-3xl border-2 border-sand p-5 text-lg">
+      <h2 id="install-title" className="text-xl font-bold">
+        Put the app on your home screen
+      </h2>
+      <p>It opens like any other app and stays paired.</p>
       <Button
-        icon={Check}
-        onClick={() => {
-          dismissInstallHint()
-          setDismissed(true)
-        }}
+        icon={Download}
+        onClick={() =>
+          void prompt.install().then((outcome) => {
+            if (outcome === 'accepted') dismiss()
+          })
+        }
         className="w-full"
       >
-        Got it, hide this
+        Install the app
       </Button>
-    </IosInstallSteps>
+      {hide}
+    </section>
   )
 }

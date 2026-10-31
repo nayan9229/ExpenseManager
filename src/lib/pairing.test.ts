@@ -116,9 +116,14 @@ describe('showsInstallHintInSimpleMode', () => {
     expect(showsInstallHintInSimpleMode({ platform: 'ios-other-browser', dismissed: true })).toBe(false)
   })
 
-  test('nothing to install from the Home Screen app, on Android (Install button in the Gatekeeper) or on a desktop', () => {
-    expect(showsInstallHintInSimpleMode({ platform: 'installed', dismissed: false })).toBe(false)
-    expect(showsInstallHintInSimpleMode({ platform: 'android', dismissed: false })).toBe(false)
-    expect(showsInstallHintInSimpleMode({ platform: 'other', dismissed: false })).toBe(false)
+  test('Android shows an Install card only while Chrome offers its install prompt, until dismissed', () => {
+    expect(showsInstallHintInSimpleMode({ platform: 'android', dismissed: false, promptAvailable: true })).toBe(true)
+    expect(showsInstallHintInSimpleMode({ platform: 'android', dismissed: false, promptAvailable: false })).toBe(false)
+    expect(showsInstallHintInSimpleMode({ platform: 'android', dismissed: true, promptAvailable: true })).toBe(false)
+  })
+
+  test('nothing to install from the Home Screen app or on a desktop', () => {
+    expect(showsInstallHintInSimpleMode({ platform: 'installed', dismissed: false, promptAvailable: true })).toBe(false)
+    expect(showsInstallHintInSimpleMode({ platform: 'other', dismissed: false, promptAvailable: true })).toBe(false)
   })
 })

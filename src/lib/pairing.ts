@@ -83,14 +83,20 @@ export function installPlatform(env: { userAgent: string; maxTouchPoints: number
 }
 
 /**
- * Whether Simple Mode shows the "Add to Home Screen" steps (spec "Simple
- * Mode": install guidance on first launch in Safari; another iOS browser is
- * pointed to Safari, as in the Gatekeeper). A device paired in
- * iPhone Safari (a scanned QR link opens there) would otherwise never be
- * told to install; the steps stay until the Member dismisses them on this
- * device or opens the app from the Home Screen.
+ * Whether Simple Mode shows install guidance (spec "Simple Mode": install
+ * guidance on first launch in Safari). A device paired in the browser by
+ * the Admin's QR link skips the Gatekeeper, so without this it is never told
+ * to install: on iOS the "Add to Home Screen" steps (another iOS browser is
+ * pointed to Safari, as in the Gatekeeper); on Android the Install button,
+ * only while Chrome offers its prompt (`promptAvailable`). Either stays until
+ * the Member dismisses it on this device or opens the installed app.
  */
-export function showsInstallHintInSimpleMode(state: { platform: InstallPlatform; dismissed: boolean }): boolean {
-  const ios = state.platform === 'ios-safari' || state.platform === 'ios-other-browser'
-  return ios && !state.dismissed
+export function showsInstallHintInSimpleMode(state: {
+  platform: InstallPlatform
+  dismissed: boolean
+  promptAvailable?: boolean
+}): boolean {
+  if (state.dismissed) return false
+  if (state.platform === 'ios-safari' || state.platform === 'ios-other-browser') return true
+  return state.platform === 'android' && state.promptAvailable === true
 }

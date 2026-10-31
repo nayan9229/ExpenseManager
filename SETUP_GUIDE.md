@@ -2,6 +2,8 @@
 
 This guide walks through connecting your **Expense Manager** Google Drive folder to your Vercel deployment using a permanent, non-expiring OAuth 2.0 Refresh Token.
 
+> **Faster:** `bash scripts/setup-wizard.sh` walks you through these same steps one screen at a time, writes `.env` and pushes every variable to Vercel. This page is the same procedure by hand. The full deploy, pairing and Ledger guide is [README.md](README.md).
+
 ---
 
 ## Step 1: Get Your Google Drive Folder ID
@@ -9,7 +11,7 @@ This guide walks through connecting your **Expense Manager** Google Drive folder
 1. Open [Google Drive](https://drive.google.com/) in your browser and open your **`Expense Manager`** folder.
 2. Look at the URL in your browser address bar:
    ```text
-   [https://drive.google.com/drive/folders/1AbCdEfGhIjKlMnOpQrStUvWxYz123456](https://drive.google.com/drive/folders/1AbCdEfGhIjKlMnOpQrStUvWxYz123456)
+   https://drive.google.com/drive/folders/1AbCdEfGhIjKlMnOpQrStUvWxYz123456
    ```
 3. Copy the string after `/folders/` — this is your **`GOOGLE_DRIVE_FOLDER_ID`**.
 
@@ -44,7 +46,7 @@ This guide walks through connecting your **Expense Manager** Google Drive folder
 4. Name it `Expense Manager Web Client`.
 5. Under **Authorized redirect URIs**, click **+ Add URI** and paste:
    ```text
-   [https://developers.google.com/oauthplayground](https://developers.google.com/oauthplayground)
+   https://developers.google.com/oauthplayground
    ```
 6. Click **Create**.
 7. Copy your **Client ID** (`GOOGLE_CLIENT_ID`) and **Client Secret** (`GOOGLE_CLIENT_SECRET`).
@@ -60,7 +62,7 @@ This guide walks through connecting your **Expense Manager** Google Drive folder
    - Click **Close**.
 3. On the left panel under **Step 1 (Select & authorize APIs)**, scroll to the bottom box (*"Input your own scopes"*) and paste:
    ```text
-   [https://www.googleapis.com/auth/drive](https://www.googleapis.com/auth/drive) [https://www.googleapis.com/auth/spreadsheets](https://www.googleapis.com/auth/spreadsheets)
+   https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/spreadsheets
    ```
 4. Click **Authorize APIs**:
    - Sign in with the Google account that owns the `Expense Manager` folder.
@@ -70,11 +72,13 @@ This guide walks through connecting your **Expense Manager** Google Drive folder
 
 ---
 
-## Step 4: Get a Free Gemini API Key (For Receipt & PDF OCR)
+## Step 4: Get a Gemini API Key (For Receipt & PDF OCR), with billing on
 
 1. Go to [Google AI Studio](https://aistudio.google.com/app/apikey).
 2. Click **Create API Key** and select your `Family-Expense-Manager` Google Cloud project.
-3. Copy the key — this is your **`GEMINI_API_KEY`**.
+3. Copy the key (starts with `AIza`): this is your **`GEMINI_API_KEY`**.
+4. **Enable billing on that project before scanning real receipts** (Tier 1, $5 prepay; see the [billing page](https://ai.google.dev/gemini-api/docs/billing)). On the free tier Google may use prompts and answers to improve its products and human reviewers may read them; on the paid tier it does not. A receipt costs well under $0.01.
+5. Optional: `GEMINI_MODEL` (default `gemini-3.5-flash-lite`; `gemini-3.8-flash` reads more accurately and costs more).
 
 ---
 
@@ -105,27 +109,16 @@ This guide walks through connecting your **Expense Manager** Google Drive folder
 
 ## Step 6: Deploy to Vercel
 
-1. Push your repository to GitHub (confirm `.env.local` is listed in `.gitignore`).
-2. Go to [Vercel Dashboard](https://vercel.com/new) and import your GitHub repository.
-3. Framework Preset: **Vite** (Vercel automatically detects `/api/*.go` as Go Serverless Functions alongside Vite).
-4. Expand **Environment Variables** and add all 7 variables from your `.env.local`:
-   - `GOOGLE_CLIENT_ID`
-   - `GOOGLE_CLIENT_SECRET`
-   - `GOOGLE_REFRESH_TOKEN`
-   - `GOOGLE_DRIVE_FOLDER_ID`
-   - `GOOGLE_SHEET_ID`
-   - `GEMINI_API_KEY`
-   - `FAMILY_ACCESS_CODE`
-   - `JWT_SECRET`
-5. Click **Deploy**.
+Follow [README.md, "Deploy to Vercel"](README.md#deploy-to-vercel). In short: `vercel link --yes --project family-expenses`, add **every** variable of [README.md, "Environment variables"](README.md#environment-variables) (`FAMILY_ACCESS_CODE`, `JWT_SECRET`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REFRESH_TOKEN`, `GOOGLE_DRIVE_FOLDER_ID`, `GOOGLE_SHEET_ID` if used, `GEMINI_API_KEY`, `GEMINI_MODEL`) to **both Production and Preview**, then `vercel deploy --prod`. A variable added after a deploy needs a new deploy.
 
 ---
 
 ## Step 7: Onboard Family Devices (Parents & Kids)
 
-1. Open your deployed Vercel URL on your phone, enter your `FAMILY_ACCESS_CODE`, and select **Admin**.
-2. Open the **Pair Family Device** modal to display the pairing QR code.
-3. Scan the QR code with your parents' and kids' phones:
-   - **On Android (Chrome):** Tap the banner or menu (`⋮`) -> **Add to Home screen / Install app**.
-   - **On iPhone/iPad (Safari):** Tap the **Share** icon -> **Add to Home Screen**.
-4. Select their profile card on their phone once—the app will remember their profile and work both online and offline.
+Follow [README.md, "First pairing"](README.md#first-pairing). In short:
+
+1. Pair your own phone with the `FAMILY_ACCESS_CODE` (on an iPhone: Add to Home Screen first, then pair inside the installed app). This first pairing runs Bootstrap.
+2. Set your Admin PIN in the Ledger (Members tab, `PIN_Code` of the `admin` row), then tap the Admin avatar and type it.
+3. In Admin Mode tap **Pair a device**: a QR code and a Pair Code.
+   - **Android (Chrome):** scan the QR (it pairs at once); then tap **Install the app** when the app offers it, or Chrome's menu `⋮` -> **Install app / Add to Home screen**.
+   - **iPhone/iPad:** in Safari tap **Share** -> **Add to Home Screen** -> **Add**, open **Expenses** from the Home Screen and **type the Pair Code** there (a QR scanned with the camera pairs Safari only, not the Home Screen app).
