@@ -1,10 +1,11 @@
-import { ArrowLeft, Camera, Check, CircleAlert, CircleCheck, CircleDashed, FileText, ImageIcon, RefreshCw, TriangleAlert, X } from 'lucide-react'
+import { ArrowLeft, Camera, Check, CircleAlert, CircleCheck, CircleDashed, FileText, ImageIcon, RefreshCw, ScanText, TriangleAlert, X } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState, type ChangeEvent } from 'react'
 import { Button } from '../components/Button'
 import { ExpenseForm } from '../components/ExpenseForm'
 import { ApiError, duplicateReceiptOf, type Expense, type Member, type ReadModel } from '../lib/api'
 import { dayLabel, istToday } from '../lib/istDate'
-import { newDraft, newExpenseId, toCreateInput, type ExpenseDraft } from '../lib/quickExpense'
+import { ocrFailureNotice, prefillFromOcr, readReceipt, type Highlight } from '../lib/ocr'
+import { newDraft, newExpenseId, toCreateInput, visibleCategories, type ExpenseDraft } from '../lib/quickExpense'
 import { saveExpense } from '../lib/readModel'
 import { MAX_BYTES, NOT_A_RECEIPT, ReceiptRejected, receiptKind } from '../lib/receiptFile'
 import { readyReceipt, sendReceipt, type AttachedReceipt, type ReadyReceipt } from '../lib/receiptPipeline'
@@ -21,9 +22,12 @@ type Props = {
 }
 
 /**
- * Scan Receipt (user stories 25 to 36, OCR aside): pick a photo or PDF, and
- * the Expense form opens at once for manual entry while the Receipt is
- * shrunk and uploaded straight to Drive. Saving links it to the Expense.
+ * Scan Receipt (user stories 25 to 36): pick a photo or PDF, and the Expense
+ * form opens at once while the Receipt is shrunk and uploaded straight to
+ * Drive, then read by OCR (ticket 07). The OCR answer refills the form
+ * unless the user has started typing; then it is offered instead. If OCR
+ * fails, a one-line notice says so and the form stays as it is, with the
+ * Receipt still attached. Saving links the Receipt to the Expense.
  */
 export function ScanReceipt({ member, model, onSaved, onCancel, onUnpaired }: Props) {
   const [file, setFile] = useState<File | null>(null)
@@ -100,10 +104,18 @@ function ReceiptPicker({ onPick, onCancel }: { onPick: (file: File) => void; onC
   )
 }
 
+/** What OCR did for an attached Receipt. */
+type Reading =
+  | { kind: 'reading' }
+  | { kind: 'filled'; unsure: boolean }
+  /** Read after the user started typing: offered, not applied. */
+  | { kind: 'offered'; draft: ExpenseDraft; highlight: Highlight }
+  | { kind: 'failed'; notice: string }
+
 type Stage =
   | { kind: 'preparing' }
   | { kind: 'uploading'; fraction: number }
-  | { kind: 'attached'; receipt: AttachedReceipt }
+  | { kind: 'attached'; receipt: AttachedReceipt; reading: Reading }
   | { kind: 'failed'; message: string; retryable: boolean }
   | { kind: 'removed' }
 
@@ -111,10 +123,16 @@ type Stage =
 type Duplicate = { expense: Expense; draft: ExpenseDraft }
 
 function ReceiptExpense({ file, member, model, onSaved, onCancel, onUnpaired }: Props & { file: File }) {
+  const { categories } = model
+  const { role } = member
   const [today] = useState(() => istToday())
   const [id] = useState(() => newExpenseId())
   const [initial] = useState(() => newDraft(member, today))
+  // The form owns its draft; OCR remounts it (new key) with a new start.
+  const [form, setForm] = useState<{ key: number; initial: ExpenseDraft; highlight?: Highlight }>(() => ({ key: 0, initial }))
   const [stage, setStage] = useState<Stage>({ kind: 'preparing' })
+  // True once the user typed or tapped anything: OCR must not overwrite it.
+  const edited = useRef(false)
   const [preview, setPreview] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -138,7 +156,9 @@ function ReceiptExpense({ file, member, model, onSaved, onCancel, onUnpaired }: 
         const receipt = await sendReceipt(ready.current, id, initial.expenseDate, {
           onProgress: (fraction) => setStage({ kind: 'uploading', fraction }),
         })
-        setStage({ kind: 'attached', receipt })
+        setStage({ kind: 'attached', receipt, reading: { kind: 'reading' } })
+        // Not awaited: Save needs the Receipt, never the OCR answer.
+        void read(receipt)
         return receipt
       } catch (err) {
         setStage({ kind: 'failed', message: uploadProblem(err), retryable: !(err instanceof ReceiptRejected) })
@@ -147,7 +167,24 @@ function ReceiptExpense({ file, member, model, onSaved, onCancel, onUnpaired }: 
     })()
     pending.current = attempt
     return attempt
-  }, [file, id, initial.expenseDate])
+
+    async function read(receipt: AttachedReceipt) {
+      let reading: Reading
+      try {
+        const result = await readReceipt(receipt.fileId)
+        const { draft, highlight } = prefillFromOcr(result, initial, visibleCategories(categories, role), today)
+        if (edited.current) {
+          reading = { kind: 'offered', draft, highlight }
+        } else {
+          setForm((f) => ({ key: f.key + 1, initial: draft, highlight }))
+          reading = { kind: 'filled', unsure: Object.keys(highlight).length > 0 }
+        }
+      } catch (err) {
+        reading = { kind: 'failed', notice: ocrFailureNotice(err) }
+      }
+      setStage((s) => (s.kind === 'attached' && s.receipt === receipt ? { ...s, reading } : s))
+    }
+  }, [file, id, initial, categories, role, today])
 
   useEffect(() => {
     // Once per picked file, StrictMode's second effect run included.
@@ -160,7 +197,15 @@ function ReceiptExpense({ file, member, model, onSaved, onCancel, onUnpaired }: 
 
   const showPanel = () => panel.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
 
+  function applyOffer(offer: { draft: ExpenseDraft; highlight: Highlight }) {
+    edited.current = false
+    setForm((f) => ({ key: f.key + 1, initial: offer.draft, highlight: offer.highlight }))
+    setStage((s) => (s.kind === 'attached' ? { ...s, reading: { kind: 'filled', unsure: Object.keys(offer.highlight).length > 0 } } : s))
+  }
+
   async function submit(draft: ExpenseDraft, force = false) {
+    // A late OCR answer must not replace what is being saved.
+    edited.current = true
     setBusy(true)
     setError(null)
     setDuplicate(null)
@@ -205,12 +250,15 @@ function ReceiptExpense({ file, member, model, onSaved, onCancel, onUnpaired }: 
 
   return (
     <ExpenseForm
+      key={form.key}
       heading="Scan Receipt"
       member={member}
       members={model.members}
       categories={model.categories}
       expenses={model.expenses}
-      initial={initial}
+      initial={form.initial}
+      highlight={form.highlight}
+      onEdit={() => (edited.current = true)}
       today={today}
       busy={busy}
       error={error}
@@ -230,6 +278,7 @@ function ReceiptExpense({ file, member, model, onSaved, onCancel, onUnpaired }: 
             <StageText stage={stage} isPdf={isPdf} big={big} />
           </div>
         )}
+        {stage.kind === 'attached' && <ReadingText reading={stage.reading} onUse={applyOffer} />}
         {stage.kind === 'uploading' && (
           <div role="progressbar" aria-label="Upload progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(stage.fraction * 100)} className="h-4 overflow-hidden rounded-full bg-sand">
             <div className="h-full bg-olive-sage transition-[width]" style={{ width: `${Math.round(stage.fraction * 100)}%` }} />
@@ -302,6 +351,46 @@ function StageText({ stage, isPdf, big }: { stage: Stage; isPdf: boolean; big: s
       )
     case 'removed':
       return null
+  }
+}
+
+/** The OCR line under "Receipt attached". */
+function ReadingText({ reading, onUse }: { reading: Reading; onUse: (offer: { draft: ExpenseDraft; highlight: Highlight }) => void }) {
+  const line = 'flex items-start gap-3 text-lg leading-snug'
+  switch (reading.kind) {
+    case 'reading':
+      return (
+        <p className={line}>
+          <CircleDashed aria-hidden="true" className="mt-0.5 size-6 shrink-0 animate-spin text-brass" />
+          Reading the receipt…
+        </p>
+      )
+    case 'filled':
+      return (
+        <p className={line}>
+          <ScanText aria-hidden="true" className="mt-0.5 size-6 shrink-0 text-olive-sage" />
+          {reading.unsure ? 'Filled in from the receipt. Please check the marked parts.' : 'Filled in from the receipt. Check it, then Save.'}
+        </p>
+      )
+    case 'offered':
+      return (
+        <div className="flex flex-col gap-3">
+          <p className={line}>
+            <ScanText aria-hidden="true" className="mt-0.5 size-6 shrink-0 text-olive-sage" />
+            The receipt has been read. Filling it in replaces what you typed.
+          </p>
+          <Button icon={ScanText} variant="secondary" onClick={() => onUse(reading)} className="w-full">
+            Fill in from the receipt
+          </Button>
+        </div>
+      )
+    case 'failed':
+      return (
+        <p role="status" className={line}>
+          <TriangleAlert aria-hidden="true" className="mt-0.5 size-6 shrink-0 text-terracotta" />
+          {reading.notice}
+        </p>
+      )
   }
 }
 

@@ -40,9 +40,11 @@ type FakeFile struct {
 	Name     string
 	MIMEType string
 	Trashed  bool
-	// Content is the file's bytes; Size, when zero, is len(Content).
+	// Content is what Download returns.
 	Content []byte
-	Size    int64
+	// Size is what File reports; zero means len(Content), so a test can
+	// claim a huge file without allocating it.
+	Size int64
 	// Thumbnail is what Drive generated; nil means "not made yet".
 	Thumbnail     []byte
 	ThumbnailType string
