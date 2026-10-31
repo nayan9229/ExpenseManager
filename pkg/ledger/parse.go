@@ -33,7 +33,7 @@ func ParseMembers(rows [][]string) []Member {
 			MemberID:             id,
 			Name:                 strings.TrimSpace(row[1]),
 			Role:                 parseRole(row[2]),
-			DefaultPaymentMethod: parsePaymentMethod(row[3]),
+			DefaultPaymentMethod: paymentMethodCell(row[3]),
 			PIN:                  strings.TrimSpace(row[4]),
 			AvatarColor:          parseColour(row[5]),
 		}
@@ -136,7 +136,9 @@ func parseRoles(cell string) []string {
 	return roles
 }
 
-func parsePaymentMethod(cell string) PaymentMethod {
+// paymentMethodCell reads a Payment Method cell leniently (case, spaces,
+// underscores); anything unknown is UPI.
+func paymentMethodCell(cell string) PaymentMethod {
 	key := normaliseKey(cell)
 	for _, pm := range PaymentMethods {
 		if normaliseKey(string(pm)) == key {

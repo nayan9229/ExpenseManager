@@ -128,20 +128,21 @@ func TestAnEditOfAnUnknownOrDeletedExpenseIs404AndWritesNothing(t *testing.T) {
 
 func TestAnInvalidEditIsRejectedAndTheRowIsUntouched(t *testing.T) {
 	cases := []struct {
-		name   string
-		change func(map[string]any)
-		code   string
+		name    string
+		change  func(map[string]any)
+		code    string
+		message string
 	}{
-		{"zero amount", func(r map[string]any) { r["amount"] = 0 }, "INVALID_AMOUNT"},
-		{"over one crore", func(r map[string]any) { r["amount"] = 10000000.01 }, "INVALID_AMOUNT"},
-		{"three decimals", func(r map[string]any) { r["amount"] = 1.005 }, "INVALID_AMOUNT"},
-		{"unknown Category", func(r map[string]any) { r["category"] = "Fireworks" }, "UNKNOWN_CATEGORY"},
-		{"Payment Method outside the enum", func(r map[string]any) { r["paymentMethod"] = "Cheque" }, "INVALID_PAYMENT_METHOD"},
-		{"two days ahead", func(r map[string]any) { r["expenseDate"] = "2026-11-02" }, "INVALID_DATE"},
-		{"not a date", func(r map[string]any) { r["expenseDate"] = "29/10/2026" }, "INVALID_DATE"},
-		{"unknown Paid_By", func(r map[string]any) { r["paidBy"] = "stranger" }, "UNKNOWN_MEMBER"},
-		{"unknown Reimbursement", func(r map[string]any) { r["reimbursementStatus"] = "maybe" }, "INVALID_REIMBURSEMENT"},
-		{"note too long", func(r map[string]any) { r["merchantNote"] = string(bytes.Repeat([]byte("a"), 501)) }, "INVALID_NOTE"},
+		{"zero amount", func(r map[string]any) { r["amount"] = 0 }, "INVALID_AMOUNT", "The amount must be more than ₹0 and at most ₹1,00,00,000"},
+		{"over one crore", func(r map[string]any) { r["amount"] = 10000000.01 }, "INVALID_AMOUNT", "The amount must be more than ₹0 and at most ₹1,00,00,000"},
+		{"three decimals", func(r map[string]any) { r["amount"] = 1.005 }, "INVALID_AMOUNT", "The amount can have at most two decimals"},
+		{"unknown Category", func(r map[string]any) { r["category"] = "Fireworks" }, "UNKNOWN_CATEGORY", "\"Fireworks\" is not a Category in the Ledger"},
+		{"Payment Method outside the enum", func(r map[string]any) { r["paymentMethod"] = "Cheque" }, "INVALID_PAYMENT_METHOD", "The Payment Method must be UPI, Cash, Card or Bank Transfer"},
+		{"two days ahead", func(r map[string]any) { r["expenseDate"] = "2026-11-02" }, "INVALID_DATE", "The date can be at most one day ahead"},
+		{"not a date", func(r map[string]any) { r["expenseDate"] = "29/10/2026" }, "INVALID_DATE", "The date must be YYYY-MM-DD"},
+		{"unknown Paid_By", func(r map[string]any) { r["paidBy"] = "stranger" }, "UNKNOWN_MEMBER", "Paid By \"stranger\" is not a Member in the Ledger"},
+		{"unknown Reimbursement", func(r map[string]any) { r["reimbursementStatus"] = "maybe" }, "INVALID_REIMBURSEMENT", "Reimbursement must be none, pending or done"},
+		{"note too long", func(r map[string]any) { r["merchantNote"] = string(bytes.Repeat([]byte("a"), 501)) }, "INVALID_NOTE", "The note can be at most 500 characters"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -155,6 +156,9 @@ func TestAnInvalidEditIsRejectedAndTheRowIsUntouched(t *testing.T) {
 
 			if status != http.StatusUnprocessableEntity || body["code"] != c.code {
 				t.Fatalf("status = %d body = %s, want 422 %s", status, raw, c.code)
+			}
+			if body["message"] != c.message {
+				t.Errorf("message = %q, want %q", body["message"], c.message)
 			}
 			if !reflect.DeepEqual(f.ledger.Dump(), before) {
 				t.Errorf("the Ledger changed on a rejected edit")

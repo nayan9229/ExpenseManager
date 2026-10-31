@@ -15,6 +15,21 @@ const (
 	ReimbursementDone    Reimbursement = "done"
 )
 
+// Reimbursements lists the enum.
+var Reimbursements = []Reimbursement{ReimbursementNone, ReimbursementPending, ReimbursementDone}
+
+// ParseReimbursement reads a Reimbursement sent by the app, the way
+// ParsePaymentMethod reads a Payment Method: it must be one of
+// Reimbursements spelled exactly.
+func ParseReimbursement(s string) (Reimbursement, bool) {
+	for _, r := range Reimbursements {
+		if string(r) == s {
+			return r, true
+		}
+	}
+	return "", false
+}
+
 // Status is an Expense's lifecycle; deleted rows stay in the Ledger (Soft Delete).
 type Status string
 
@@ -101,11 +116,11 @@ func parseExpense(row []string) (Expense, bool) {
 		Currency:      strings.ToUpper(cell(7)),
 		Category:      cell(8),
 		MerchantNote:  unescapeText(cell(9)),
-		PaymentMethod: parsePaymentMethod(row[10]),
+		PaymentMethod: paymentMethodCell(row[10]),
 		DriveFileID:   cell(11),
 		DriveViewURL:  cell(12),
 		FileHash:      cell(13),
-		Reimbursement: parseReimbursement(row[14]),
+		Reimbursement: reimbursementCell(row[14]),
 		Status:        parseStatus(row[15]),
 	}
 	if e.PaidBy == "" {
@@ -132,7 +147,9 @@ func ParseDate(cell string) (string, bool) {
 	return t.Format(DateLayout), true
 }
 
-func parseReimbursement(cell string) Reimbursement {
+// reimbursementCell reads a Reimbursement cell leniently (case, spaces);
+// anything unknown is none.
+func reimbursementCell(cell string) Reimbursement {
 	switch r := Reimbursement(strings.ToLower(strings.TrimSpace(cell))); r {
 	case ReimbursementPending, ReimbursementDone:
 		return r

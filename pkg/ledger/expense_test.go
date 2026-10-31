@@ -89,3 +89,29 @@ func TestFindExpenseLocatesTheRowIndexByID(t *testing.T) {
 		t.Error("FindExpense matched a blank ID")
 	}
 }
+
+func TestTheAppsReimbursementAndPaymentMethodMustBeSpelledExactly(t *testing.T) {
+	for _, c := range []struct {
+		in   string
+		want Reimbursement
+		ok   bool
+	}{
+		{"none", ReimbursementNone, true}, {"pending", ReimbursementPending, true}, {"done", ReimbursementDone, true},
+		{"Pending", "", false}, {"", "", false}, {"maybe", "", false},
+	} {
+		if got, ok := ParseReimbursement(c.in); got != c.want || ok != c.ok {
+			t.Errorf("ParseReimbursement(%q) = %q, %v; want %q, %v", c.in, got, ok, c.want, c.ok)
+		}
+	}
+	for _, c := range []struct {
+		in   string
+		want PaymentMethod
+		ok   bool
+	}{
+		{"UPI", UPI, true}, {"Bank Transfer", BankTransfer, true}, {"upi", "", false}, {"Cheque", "", false},
+	} {
+		if got, ok := ParsePaymentMethod(c.in); got != c.want || ok != c.ok {
+			t.Errorf("ParsePaymentMethod(%q) = %q, %v; want %q, %v", c.in, got, ok, c.want, c.ok)
+		}
+	}
+}

@@ -24,6 +24,18 @@ const (
 // PaymentMethods lists the enum in display order.
 var PaymentMethods = []PaymentMethod{UPI, Cash, Card, BankTransfer}
 
+// ParsePaymentMethod reads a Payment Method sent by the app: it must be one
+// of PaymentMethods spelled exactly. (A cell the Admin typed by hand is read
+// leniently by the row parsers instead.)
+func ParsePaymentMethod(s string) (PaymentMethod, bool) {
+	for _, pm := range PaymentMethods {
+		if string(pm) == s {
+			return pm, true
+		}
+	}
+	return "", false
+}
+
 // Member is one row of the Members tab. PIN is the raw cell and must never
 // leave the server; the `expenses` function hashes it.
 type Member struct {

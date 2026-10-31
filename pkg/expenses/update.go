@@ -2,11 +2,9 @@ package expenses
 
 import (
 	"encoding/json"
-	"math"
 	"net/http"
 	"strings"
 	"time"
-	"unicode/utf8"
 
 	"github.com/nayan9229/ExpenseManager/pkg/httpjson"
 	"github.com/nayan9229/ExpenseManager/pkg/ledger"
@@ -35,62 +33,41 @@ type UpdateRequest struct {
 // since left the Ledger can still have its note fixed.
 func ValidateUpdate(stored ledger.Expense, req UpdateRequest, members []ledger.Member, categories []ledger.Category, now time.Time) (ledger.Expense, *ValidationError) {
 	e := stored
+	var verr *ValidationError
 	if req.Amount != nil && *req.Amount != stored.Amount {
-		amount := *req.Amount
-		if amount <= 0 || amount > MaxAmount || math.IsNaN(amount) {
-			return ledger.Expense{}, invalid("INVALID_AMOUNT", "The amount must be more than ₹0 and at most ₹1,00,00,000")
+		if e.Amount, verr = checkAmount(*req.Amount); verr != nil {
+			return ledger.Expense{}, verr
 		}
-		if paise := amount * 100; math.Abs(paise-math.Round(paise)) > 1e-6 {
-			return ledger.Expense{}, invalid("INVALID_AMOUNT", "The amount can have at most two decimals")
-		}
-		e.Amount = amount
 	}
 	if req.Category != nil && strings.TrimSpace(*req.Category) != stored.Category {
-		category, ok := findCategory(categories, *req.Category)
-		if !ok {
-			return ledger.Expense{}, invalid("UNKNOWN_CATEGORY", "%q is not a Category in the Ledger", *req.Category)
+		if e.Category, verr = checkCategory(categories, *req.Category); verr != nil {
+			return ledger.Expense{}, verr
 		}
-		e.Category = category
 	}
 	if req.PaymentMethod != nil && *req.PaymentMethod != string(stored.PaymentMethod) {
-		method, ok := paymentMethod(*req.PaymentMethod)
-		if !ok {
-			return ledger.Expense{}, invalid("INVALID_PAYMENT_METHOD", "The Payment Method must be UPI, Cash, Card or Bank Transfer")
+		if e.PaymentMethod, verr = checkPaymentMethod(*req.PaymentMethod); verr != nil {
+			return ledger.Expense{}, verr
 		}
-		e.PaymentMethod = method
 	}
 	if req.ExpenseDate != nil && strings.TrimSpace(*req.ExpenseDate) != stored.ExpenseDate {
-		date, err := time.ParseInLocation(ledger.DateLayout, strings.TrimSpace(*req.ExpenseDate), ledger.IST)
-		if err != nil {
-			return ledger.Expense{}, invalid("INVALID_DATE", "The date must be YYYY-MM-DD")
+		if e.ExpenseDate, verr = checkDate(*req.ExpenseDate, now); verr != nil {
+			return ledger.Expense{}, verr
 		}
-		today := now.In(ledger.IST)
-		if date.After(time.Date(today.Year(), today.Month(), today.Day()+1, 0, 0, 0, 0, ledger.IST)) {
-			return ledger.Expense{}, invalid("INVALID_DATE", "The date can be at most one day ahead")
-		}
-		e.ExpenseDate = date.Format(ledger.DateLayout)
 	}
 	if req.PaidBy != nil && strings.TrimSpace(*req.PaidBy) != stored.PaidBy {
-		paidBy, ok := findMember(members, *req.PaidBy)
-		if !ok {
-			return ledger.Expense{}, invalid("UNKNOWN_MEMBER", "Paid By %q is not a Member in the Ledger", *req.PaidBy)
+		if e.PaidBy, verr = checkMember(members, *req.PaidBy, "Paid By"); verr != nil {
+			return ledger.Expense{}, verr
 		}
-		e.PaidBy = paidBy
 	}
 	if req.ReimbursementStatus != nil {
-		switch r := ledger.Reimbursement(strings.TrimSpace(*req.ReimbursementStatus)); r {
-		case ledger.ReimbursementNone, ledger.ReimbursementPending, ledger.ReimbursementDone:
-			e.Reimbursement = r
-		default:
-			return ledger.Expense{}, invalid("INVALID_REIMBURSEMENT", "Reimbursement must be none, pending or done")
+		if e.Reimbursement, verr = checkReimbursement(*req.ReimbursementStatus); verr != nil {
+			return ledger.Expense{}, verr
 		}
 	}
 	if req.MerchantNote != nil {
-		note := strings.TrimSpace(*req.MerchantNote)
-		if utf8.RuneCountInString(note) > MaxNoteLength {
-			return ledger.Expense{}, invalid("INVALID_NOTE", "The note can be at most %d characters", MaxNoteLength)
+		if e.MerchantNote, verr = checkNote(*req.MerchantNote); verr != nil {
+			return ledger.Expense{}, verr
 		}
-		e.MerchantNote = note
 	}
 	e.UpdatedAt = now.In(ledger.IST).Format(time.RFC3339)
 	return e, nil
