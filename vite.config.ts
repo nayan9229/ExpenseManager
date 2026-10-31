@@ -37,7 +37,7 @@ export default defineConfig({
         // The HEIC converter (~3 MB, ticket 06) is fetched only when a HEIC
         // file is picked, so it stays out of the precache and is cached on
         // first use instead (runtime rule below).
-        globIgnores: ['**/heic-to-*.js'],
+        globIgnores: ['**/heic-to-*.js', 'receipt-upload-proof.html'],
         // SPA navigations fall back to the shell, but never for API routes.
         navigateFallback: '/index.html',
         navigateFallbackDenylist: [/^\/api\//],

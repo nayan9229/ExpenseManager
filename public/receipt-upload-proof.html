@@ -1,0 +1,71 @@
+<!doctype html>
+<!--
+  THROWAWAY (ticket 06, first criterion): proves a browser PUT to a Drive
+  resumable session opened by /api/upload-url works cross-origin on the
+  deployed URL. Delete this file once the result is recorded in the ticket.
+  It never prints the session URL (a bearer secret).
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Receipt upload proof</title>
+<style>
+  body { font: 18px/1.5 system-ui, sans-serif; background: #F3EDE1; color: #4A3728; margin: 0 auto; max-width: 40rem; padding: 1rem; }
+  button, input { font: inherit; min-height: 56px; }
+  button { background: #4A3728; color: #F3EDE1; border: 0; border-radius: 1rem; padding: 0 1.5rem; margin: .25rem 0; }
+  pre { background: #D8C9AE; padding: 1rem; border-radius: 1rem; white-space: pre-wrap; word-break: break-word; }
+  .ok { color: #6E7250; font-weight: 700; } .bad { color: #A9603F; font-weight: 700; }
+</style>
+</head>
+<body>
+<h1>Receipt upload proof</h1>
+<p>Opens a Drive resumable session through <code>/api/upload-url</code>, then PUTs a small JPEG to it from this page. Pass = the PUT answer is readable here (so Drive sent CORS headers) and carries a file <code>id</code>.</p>
+<p><label>Access Code (only if this browser is not paired yet)<br><input id="code" type="text" autocomplete="off"></label></p>
+<button id="pair" type="button">Pair this browser</button>
+<p><label>File (optional; a generated 64x64 JPEG is used otherwise)<br><input id="file" type="file" accept="image/*,application/pdf"></label></p>
+<button id="run" type="button">Run the proof</button>
+<pre id="log"></pre>
+<script>
+const log = (line, cls) => { const s = document.createElement('div'); s.textContent = line; if (cls) s.className = cls; document.getElementById('log').append(s) }
+document.getElementById('pair').onclick = async () => {
+  const res = await fetch('/api/auth', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin', body: JSON.stringify({ accessCode: document.getElementById('code').value }) })
+  log(`pair: ${res.status} ${await res.text()}`, res.ok ? 'ok' : 'bad')
+}
+async function sampleJpeg() {
+  const c = document.createElement('canvas'); c.width = c.height = 64
+  const g = c.getContext('2d'); g.fillStyle = '#A9603F'; g.fillRect(0, 0, 64, 64); g.fillStyle = '#4A3728'; g.fillRect(0, 0, 32, 32)
+  return new Promise((r) => c.toBlob(r, 'image/jpeg', 0.82))
+}
+document.getElementById('run').onclick = async () => {
+  document.getElementById('log').textContent = ''
+  const picked = document.getElementById('file').files[0]
+  const blob = picked || await sampleJpeg()
+  const mimeType = blob.type === 'application/pdf' ? 'application/pdf' : 'image/jpeg'
+  const name = `${crypto.randomUUID()}.${mimeType === 'application/pdf' ? 'pdf' : 'jpg'}`
+  const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date())
+  log(`origin: ${location.origin}`)
+  log(`userAgent: ${navigator.userAgent}`)
+  log(`file: ${name}, ${mimeType}, ${blob.size} bytes, expenseDate ${today}`)
+  const s = await fetch('/api/upload-url', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin', body: JSON.stringify({ name, mimeType, size: blob.size, expenseDate: today }) })
+  const session = await s.json().catch(() => ({}))
+  if (!s.ok) { log(`upload-url: ${s.status} ${session.code}: ${session.message}`, 'bad'); return }
+  log(`upload-url: ${s.status}, session opened in ${session.folderPath} (URL hidden: it is a bearer secret)`, 'ok')
+  const started = performance.now()
+  try {
+    const put = await fetch(session.uploadUrl, { method: 'PUT', headers: { 'Content-Type': mimeType }, body: blob })
+    const text = await put.text()
+    const ms = Math.round(performance.now() - started)
+    let id = null
+    try { id = JSON.parse(text).id } catch {}
+    log(`PUT: ${put.status} in ${ms} ms; body readable: yes; body: ${text.slice(0, 300)}`, put.ok && id ? 'ok' : 'bad')
+    log(put.ok && id ? `PASS: browser PUT succeeded cross-origin, Drive file id ${id}` : 'FAIL: the PUT was answered but not with a 2xx and an id', put.ok && id ? 'ok' : 'bad')
+    if (id) log(`Clean-up: the test file "${name}" is in ${session.folderPath}; delete it in Drive.`)
+  } catch (err) {
+    log(`PUT threw ${err.name}: ${err.message} after ${Math.round(performance.now() - started)} ms`, 'bad')
+    log('FAIL: no readable answer. Open DevTools > Network: a failed OPTIONS preflight or a missing Access-Control-Allow-Origin on the PUT means CORS is not granted; implement the < 4 MB proxy fallback.', 'bad')
+  }
+}
+</script>
+</body>
+</html>
