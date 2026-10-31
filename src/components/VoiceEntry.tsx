@@ -10,9 +10,10 @@ import { Button } from './Button'
 /** What a voice attempt hands to Quick Expense: a prefill and what was heard, or a one-line failure. */
 export type VoiceResult = { kind: 'heard'; transcript: string; prefill: Partial<ExpenseDraft> } | { kind: 'failed'; message: string }
 
+/** The UI is English; only the toggle names Hindi in its own script. */
 const LANGUAGES: { lang: SpeechLanguage; label: string; example: string }[] = [
-  { lang: 'en-IN', label: 'English', example: '“Paid 450 rupees for medicines by UPI”' },
-  { lang: 'hi-IN', label: 'हिन्दी', example: '“दवाई के लिए 450 रुपये यूपीआई से”' },
+  { lang: 'en-IN', label: 'English', example: 'For example: “Paid 450 rupees for medicines by UPI”' },
+  { lang: 'hi-IN', label: 'हिन्दी', example: 'Speak in Hindi, for example: 450 rupees for medicines by UPI' },
 ]
 
 type Props = {
@@ -109,10 +110,10 @@ export function VoiceEntry({ member, categories, onResult }: Props) {
           </p>
           <div className="flex max-w-sm flex-col gap-2 text-xl">
             <p>Say the amount, what it was for, and how you paid.</p>
-            <p lang={current.lang} className="font-semibold">
-              {current.example}
+            <p className="font-semibold">{current.example}</p>
+            <p className="text-lg">
+              Language: <span lang={current.lang}>{current.label}</span>
             </p>
-            <p className="text-lg">Language: {current.label}</p>
           </div>
           <Button icon={X} variant="secondary" onClick={() => cancelRef.current?.()} className="w-full max-w-sm">
             Cancel
