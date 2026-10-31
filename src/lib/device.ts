@@ -1,6 +1,6 @@
 /**
- * What this device remembers between loads: the last selected Member and
- * whether Bootstrap has run from here. localStorage for now; ticket 09
+ * What this device remembers between loads: the last selected Member,
+ * whether Bootstrap has run from here, and the voice entry language. localStorage for now; ticket 09
  * moves device settings into Dexie alongside the Offline Queue.
  *
  * Every function takes the store so tests pass a fake, and every call is
@@ -11,6 +11,7 @@ export type DeviceStore = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>
 
 const SELECTED_MEMBER = 'fem.selectedMemberId'
 const BOOTSTRAPPED = 'fem.bootstrapped'
+const SPEECH_LANGUAGE = 'fem.speechLanguage'
 
 function defaultStore(): DeviceStore | null {
   try {
@@ -62,4 +63,16 @@ export function markBootstrapped(store: DeviceStore | null = defaultStore()): vo
 /** Forces Bootstrap to run again next load (e.g. after LEDGER_NOT_FOUND). */
 export function forgetBootstrapped(store: DeviceStore | null = defaultStore()): void {
   write(store, BOOTSTRAPPED, null)
+}
+
+/** The languages voice entry recognises (spec: "Voice"). */
+export type SpeechLanguage = 'en-IN' | 'hi-IN'
+
+/** The voice entry language this device uses; English (India) until changed. */
+export function speechLanguage(store: DeviceStore | null = defaultStore()): SpeechLanguage {
+  return read(store, SPEECH_LANGUAGE) === 'hi-IN' ? 'hi-IN' : 'en-IN'
+}
+
+export function setSpeechLanguage(language: SpeechLanguage, store: DeviceStore | null = defaultStore()): void {
+  write(store, SPEECH_LANGUAGE, language)
 }
