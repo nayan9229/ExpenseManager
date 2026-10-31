@@ -558,6 +558,7 @@ function ExpenseSummary({
 }) {
   const name = (id: string) => members.find((m) => m.memberId === id)?.name ?? 'Unknown'
   const emoji = categories.find((c) => categoryKey(c.name) === categoryKey(expense.category))?.emoji ?? '📦'
+  const receiptNumber = receiptNumberLine(expense)
   return (
     <div className="flex min-w-0 flex-1 items-center gap-3">
       <span role="img" aria-label={expense.category} className={'flex size-12 shrink-0 items-center justify-center rounded-full text-2xl ' + (onSand ? 'bg-warm-white' : 'bg-sand')}>
@@ -569,7 +570,7 @@ function ExpenseSummary({
           <span className="shrink-0 text-base">{dayLabel(expense.expenseDate, today)}</span>
         </span>
         <span className="truncate text-base">{expense.merchantNote || expense.category}</span>
-        {receiptNumberLine(expense) && <span className="truncate text-base">{receiptNumberLine(expense)}</span>}
+        {receiptNumber && <span className="truncate text-base">{receiptNumber}</span>}
         <span className="text-base">
           {expense.paidBy === expense.loggedBy ? `By ${name(expense.loggedBy)}` : `Logged by ${name(expense.loggedBy)}, paid by ${name(expense.paidBy)}`}
         </span>

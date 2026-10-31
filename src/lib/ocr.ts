@@ -5,7 +5,7 @@
  * parent sees and confirms the form. Fields the model was unsure of, or
  * could not fill, are highlighted.
  */
-import { ApiError, MAX_RECEIPT_NUMBER, readJson, type Category, type PaymentMethod } from './api'
+import { ApiError, MAX_RECEIPT_NUMBER, normaliseReceiptNumber, readJson, type Category, type PaymentMethod } from './api'
 import { addDays } from './istDate'
 import { MAX_AMOUNT } from './keypad'
 import type { ExpenseDraft } from './quickExpense'
@@ -91,8 +91,8 @@ export function prefillFromOcr(result: OcrResult, base: ExpenseDraft, categories
   if (!merchant || unsure(result.confidence.merchant)) highlight.note = true
 
   // `?? null`: an answer from a server that predates the Receipt Number.
-  const receiptNumber = (result.receiptNumber ?? '').trim().slice(0, MAX_RECEIPT_NUMBER)
-  draft.receiptNumber = receiptNumber
+  const receiptNumber = normaliseReceiptNumber(result.receiptNumber)?.slice(0, MAX_RECEIPT_NUMBER)
+  draft.receiptNumber = receiptNumber ?? ''
   // Many Receipts print no number, so a blank one is not a doubt: only a reading the model was unsure of is highlighted.
   if (receiptNumber && unsure(result.confidence.receiptNumber)) highlight.receiptNumber = true
 

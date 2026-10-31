@@ -210,6 +210,12 @@ export type ReceiptFields = {
 /** The longest Receipt Number the Ledger takes (pkg/ledger MaxReceiptNumberLength). */
 export const MAX_RECEIPT_NUMBER = 40
 
+/** A Receipt Number as the Ledger keeps it: trimmed, and undefined when blank or absent (none). */
+export function normaliseReceiptNumber(value: string | null | undefined): string | undefined {
+  const number = (value ?? '').trim()
+  return number === '' ? undefined : number
+}
+
 /** The Expense that already holds this Receipt, when `err` is a 409 DUPLICATE_RECEIPT; otherwise null. */
 export function duplicateReceiptOf(err: unknown): Expense | null {
   if (!(err instanceof ApiError) || err.status !== 409 || err.code !== 'DUPLICATE_RECEIPT') return null

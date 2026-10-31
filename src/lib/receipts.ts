@@ -4,7 +4,7 @@
  * so no phone ever needs a Google login. Thumbnails are cached in Dexie by
  * file ID so the last five render offline.
  */
-import { ApiError, type Expense } from './api'
+import { ApiError, normaliseReceiptNumber, type Expense } from './api'
 import { appDb, type CachedThumbnail, type ExpenseDb } from './db'
 
 export type ReceiptDeps = {
@@ -24,7 +24,7 @@ export const MAX_THUMBNAILS = 100
  * full-screen view: "No. 004521/A", or null when there is no Receipt Number.
  */
 export function receiptNumberLine(expense: Pick<Expense, 'receiptNumber'>): string | null {
-  const number = expense.receiptNumber?.trim()
+  const number = normaliseReceiptNumber(expense.receiptNumber)
   return number ? `No. ${number}` : null
 }
 

@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { ApiError, createExpense, getReadModel, getSessionState, isActive, pairDevice, runBootstrap, type CreateExpenseInput, type Expense } from './api'
+import { ApiError, createExpense, getReadModel, getSessionState, isActive, normaliseReceiptNumber, pairDevice, runBootstrap, type CreateExpenseInput, type Expense } from './api'
 
 type Seen = { method: string; body: string | null; contentType: string | null }
 
@@ -198,5 +198,16 @@ describe('isActive', () => {
   test('an active Expense counts and a Soft Deleted one does not', () => {
     expect(isActive({ status: 'active' })).toBe(true)
     expect(isActive({ status: 'deleted' })).toBe(false)
+  })
+})
+
+describe('normaliseReceiptNumber', () => {
+  test('is trimmed and otherwise kept as typed', () => {
+    expect(normaliseReceiptNumber('  004521/A ')).toBe('004521/A')
+    expect(normaliseReceiptNumber("'A12")).toBe("'A12")
+  })
+
+  test('blank, null or absent is none', () => {
+    for (const blank of ['', '   ', null, undefined]) expect(normaliseReceiptNumber(blank)).toBeUndefined()
   })
 })
