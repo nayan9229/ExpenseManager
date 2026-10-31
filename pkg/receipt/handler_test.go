@@ -164,3 +164,44 @@ func TestAFileOutsideTheReceiptStoreIsNeverRead(t *testing.T) {
 		})
 	}
 }
+
+func TestAReceiptOver4MBIsRefusedWithItsDriveLink(t *testing.T) {
+	f := newFixture(t)
+	// A scanned PDF Drive says is 6.2 MB.
+	id := saveReceipt(t, f, receiptstore.FakeFile{ID: "big-bill", Name: "2026-10-30_Medical_6200.pdf", MIMEType: "application/pdf", Size: 6_200_000})
+
+	a := get(t, f, http.MethodGet, "?id="+id, pairedCookie(t))
+
+	if a.status != http.StatusRequestEntityTooLarge || a.body["code"] != "RECEIPT_TOO_LARGE" {
+		t.Fatalf("got %d %s, want 413 RECEIPT_TOO_LARGE", a.status, a.raw)
+	}
+	if got := a.body["webViewLink"]; got != "https://drive.google.com/file/d/big-bill/view?usp=drivesdk" {
+		t.Errorf("webViewLink = %v, want the file's Drive link", got)
+	}
+	if len(f.store.Downloads) != 0 {
+		t.Errorf("the bytes were downloaded anyway: %v", f.store.Downloads)
+	}
+}
+
+// Drive's size can be missing or stale; the bytes themselves decide.
+func TestBytesOverTheCapAreRefusedEvenWhenTheSizeLied(t *testing.T) {
+	f := newFixture(t)
+	id := saveReceipt(t, f, receiptstore.FakeFile{ID: "liar", Name: "x.jpg", MIMEType: "image/jpeg", Content: make([]byte, receipt.MaxProxySize+1), Size: 1})
+
+	a := get(t, f, http.MethodGet, "?id="+id, pairedCookie(t))
+
+	if a.status != http.StatusRequestEntityTooLarge || a.body["webViewLink"] != "https://drive.google.com/file/d/liar/view?usp=drivesdk" {
+		t.Fatalf("got %d %s, want 413 with the Drive link", a.status, a.raw)
+	}
+}
+
+func TestAReceiptOfExactly4MBIsServed(t *testing.T) {
+	f := newFixture(t)
+	id := saveReceipt(t, f, receiptstore.FakeFile{ID: "edge", Name: "x.jpg", MIMEType: "image/jpeg", Content: make([]byte, 4<<20)})
+
+	a := get(t, f, http.MethodGet, "?id="+id, pairedCookie(t))
+
+	if a.status != http.StatusOK || len(a.raw) != 4<<20 {
+		t.Fatalf("got %d with %d bytes, want 200 with 4194304", a.status, len(a.raw))
+	}
+}

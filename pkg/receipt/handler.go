@@ -74,12 +74,39 @@ func (s Service) serve(w http.ResponseWriter, r *http.Request) {
 		writeStoreError(w, err)
 		return
 	}
+	if file.Size > MaxProxySize {
+		writeTooLarge(w, file)
+		return
+	}
 	body, err := s.Store.Download(ctx, file.ID, MaxProxySize)
+	if errors.Is(err, receiptstore.ErrTooLarge) {
+		writeTooLarge(w, file)
+		return
+	}
 	if err != nil {
 		writeStoreError(w, err)
 		return
 	}
 	writeBytes(w, file.MIMEType, body)
+}
+
+// TooLarge is the 413 body: the usual envelope plus the way out.
+type TooLarge struct {
+	Code    string `json:"code"`
+	Message string `json:"message"`
+	// WebViewLink opens the Receipt in Google Drive (needs the Admin's login).
+	WebViewLink string `json:"webViewLink"`
+	Size        int64  `json:"size"`
+}
+
+func writeTooLarge(w http.ResponseWriter, file receiptstore.File) {
+	w.Header().Set("Cache-Control", "no-store")
+	httpjson.Write(w, http.StatusRequestEntityTooLarge, TooLarge{
+		Code:        "RECEIPT_TOO_LARGE",
+		Message:     "This Receipt is too large to show in the app. Open it in Google Drive.",
+		WebViewLink: file.WebViewLink,
+		Size:        file.Size,
+	})
 }
 
 func writeBytes(w http.ResponseWriter, mimeType string, body []byte) {
