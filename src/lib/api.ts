@@ -109,8 +109,11 @@ export async function getPairToken(fetchImpl: typeof fetch = fetch): Promise<Pai
 /** A Member's permission tier (GLOSSARY: Role). */
 export type Role = 'admin' | 'parent' | 'kid'
 
+/** Every Payment Method, in the order the form shows them. */
+export const PAYMENT_METHODS = ['UPI', 'Cash', 'Card', 'Bank Transfer'] as const
+
 /** How an Expense was paid (GLOSSARY: Payment Method). */
-export type PaymentMethod = 'UPI' | 'Cash' | 'Card' | 'Bank Transfer'
+export type PaymentMethod = (typeof PAYMENT_METHODS)[number]
 
 /** A Members row as the server returns it: a hash of the PIN, never the PIN. */
 export type Member = {
@@ -166,7 +169,15 @@ export type Expense = {
   driveViewUrl: string
   fileHash: string
   reimbursementStatus: ReimbursementStatus
-  status: 'active' | 'deleted'
+  status: ExpenseStatus
+}
+
+/** An Expense's lifecycle; a deleted one stays in the Ledger (GLOSSARY: Soft Delete). */
+export type ExpenseStatus = 'active' | 'deleted'
+
+/** Whether an Expense counts: not Soft Deleted. */
+export function isActive(expense: Pick<Expense, 'status'>): boolean {
+  return expense.status === 'active'
 }
 
 /** What a create sends: the Expense minus everything the server sets. */

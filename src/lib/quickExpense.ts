@@ -6,7 +6,7 @@
  * The draft is shared with ticket 05 (edit), 06 (Receipt prefill) and 10
  * (voice prefill): they start from `newDraft` or their own partial draft.
  */
-import type { Category, CreateExpenseInput, Expense, Member, PaymentMethod, ReimbursementStatus, Role } from './api'
+import { isActive, type Category, type CreateExpenseInput, type Expense, type Member, type PaymentMethod, type ReimbursementStatus, type Role } from './api'
 import { addDays } from './istDate'
 
 /** Everything the Quick Expense form edits. */
@@ -49,7 +49,7 @@ export function findDuplicate(
   return (
     expenses.find(
       (e) =>
-        e.status === 'active' &&
+        isActive(e) &&
         e.id !== excludeId &&
         e.amount === candidate.amount &&
         e.category === candidate.category &&
@@ -68,7 +68,7 @@ export function byNewest(a: Expense, b: Expense): number {
 /** The Member's own last five active Expenses for Simple Mode. */
 export function lastFive(expenses: Expense[], memberId: string): Expense[] {
   return expenses
-    .filter((e) => e.status === 'active' && e.loggedBy === memberId)
+    .filter((e) => isActive(e) && e.loggedBy === memberId)
     .sort(byNewest)
     .slice(0, 5)
 }

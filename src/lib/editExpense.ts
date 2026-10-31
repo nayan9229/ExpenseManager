@@ -2,7 +2,7 @@
  * Editing and deleting an Expense (user stories 53 to 56): who may, and
  * the bridge between a stored Expense and the Quick Expense form's draft.
  */
-import type { Expense, Member, UpdateExpenseInput } from './api'
+import { isActive, type Expense, type Member, type UpdateExpenseInput } from './api'
 import type { ExpenseDraft } from './quickExpense'
 
 /**
@@ -11,7 +11,7 @@ import type { ExpenseDraft } from './quickExpense'
  * only (ADR-0002); the server trusts every paired device.
  */
 export function canEdit(member: Member, expense: Expense): boolean {
-  if (expense.status !== 'active') return false
+  if (!isActive(expense)) return false
   return member.role === 'admin' || expense.loggedBy === member.memberId
 }
 

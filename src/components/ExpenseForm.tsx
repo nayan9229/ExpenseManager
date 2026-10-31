@@ -1,13 +1,12 @@
 import { ArrowLeft, Check, CircleAlert, Delete, ScanEye, TriangleAlert, Wallet } from 'lucide-react'
 import { useId, useState, type ReactNode } from 'react'
-import type { Category, Expense, Member, PaymentMethod, ReimbursementStatus } from '../lib/api'
+import { PAYMENT_METHODS, type Category, type Expense, type Member, type ReimbursementStatus } from '../lib/api'
 import { addDays, dayLabel } from '../lib/istDate'
 import { pressKey, type Digit, type KeypadKey } from '../lib/keypad'
 import { draftProblem, findDuplicate, visibleCategories, type ExpenseDraft } from '../lib/quickExpense'
 import { formatRupees } from '../lib/rupees'
 import { Button } from './Button'
 
-const PAYMENT_METHODS: PaymentMethod[] = ['UPI', 'Cash', 'Card', 'Bank Transfer']
 const DIGITS: Digit[] = [1, 2, 3, 4, 5, 6, 7, 8, 9]
 const ADDS = [50, 100, 500] as const
 const REIMBURSEMENTS: { value: ReimbursementStatus; label: string }[] = [

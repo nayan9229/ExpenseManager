@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { ApiError, createExpense, getReadModel, getSessionState, pairDevice, runBootstrap, type CreateExpenseInput, type Expense } from './api'
+import { ApiError, createExpense, getReadModel, getSessionState, isActive, pairDevice, runBootstrap, type CreateExpenseInput, type Expense } from './api'
 
 type Seen = { method: string; body: string | null; contentType: string | null }
 
@@ -191,5 +191,12 @@ describe('createExpense', () => {
     const call = createExpense(input, fakeCreate(422, { code: 'UNKNOWN_CATEGORY', message: 'not a Category' }, []))
     await expect(call).rejects.toMatchObject({ status: 422, code: 'UNKNOWN_CATEGORY' })
     await expect(call).rejects.toBeInstanceOf(ApiError)
+  })
+})
+
+describe('isActive', () => {
+  test('an active Expense counts and a Soft Deleted one does not', () => {
+    expect(isActive({ status: 'active' })).toBe(true)
+    expect(isActive({ status: 'deleted' })).toBe(false)
   })
 })

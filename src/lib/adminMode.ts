@@ -3,7 +3,7 @@
  * selected month (spec: "Burn Rate and totals are computed client-side").
  * Pure functions, so the dashboard only lays them out.
  */
-import type { BootstrapReport, Category, Expense, Member, RecurringRule } from './api'
+import { isActive, type BootstrapReport, type Category, type Expense, type Member, type RecurringRule } from './api'
 import { daysIn, monthOf, type Month } from './month'
 import type { ExpenseDraft } from './quickExpense'
 
@@ -51,7 +51,7 @@ export function burnRates(categories: Category[], expenses: Expense[]): BurnRate
   }
   let householdSpent = 0
   for (const e of expenses) {
-    if (e.status !== 'active') continue
+    if (!isActive(e)) continue
     const key = categoryKey(e.category)
     const total = totals.get(key) ?? { name: e.category.trim(), spent: 0, count: 0 }
     total.spent = addRupees(total.spent, e.amount)
@@ -110,7 +110,7 @@ export type ReimbursementGroup = {
 export function reimbursableQueue(expenses: Expense[], members: Member[]): ReimbursementGroup[] {
   const groups = new Map<string, ReimbursementGroup>()
   for (const e of expenses) {
-    if (e.status !== 'active' || e.reimbursementStatus !== 'pending') continue
+    if (!isActive(e) || e.reimbursementStatus !== 'pending') continue
     const group = groups.get(e.paidBy) ?? {
       memberId: e.paidBy,
       name: members.find((m) => m.memberId === e.paidBy)?.name ?? 'Unknown',
@@ -155,7 +155,7 @@ export type DueRule = {
  */
 export function dueNotLogged(rules: RecurringRule[], expenses: Expense[], month: Month): DueRule[] {
   const logged = new Set(
-    expenses.filter((e) => e.status === 'active' && monthOf(e.expenseDate) === month).map((e) => categoryKey(e.category)),
+    expenses.filter((e) => isActive(e) && monthOf(e.expenseDate) === month).map((e) => categoryKey(e.category)),
   )
   const lastDay = daysIn(month)
   return rules
