@@ -75,4 +75,32 @@ describe('getThumbnail', () => {
     const row = await db.thumbnails.get('drive-file-1')
     expect(await bytesOf(row!.blob)).toEqual(PNG)
   })
+
+  test('a Receipt Drive has not made a thumbnail for yet is null and is asked again next time', async () => {
+    const db = freshDb()
+    const api = fakeReceiptApi({
+      '/api/receipt?id=fresh&thumb=1': { status: 404, json: { code: 'NO_THUMBNAIL', message: 'not yet' } },
+    })
+
+    expect(await getThumbnail('fresh', { db, fetchImpl: api.fetchImpl })).toBeNull()
+    expect(await getThumbnail('fresh', { db, fetchImpl: api.fetchImpl })).toBeNull()
+
+    expect(api.requests).toHaveLength(2)
+    expect(await db.thumbnails.count()).toBe(0)
+  })
+
+  test('offline with nothing cached rejects with the network error and stores nothing', async () => {
+    const db = freshDb()
+    const api = fakeReceiptApi({ '/api/receipt?id=drive-file-2&thumb=1': 'offline' })
+
+    await expect(getThumbnail('drive-file-2', { db, fetchImpl: api.fetchImpl })).rejects.toBeInstanceOf(TypeError)
+    expect(await db.thumbnails.count()).toBe(0)
+  })
+
+  test('a lost Session rejects with the 401 so the app can go back to the Gatekeeper', async () => {
+    const db = freshDb()
+    const api = fakeReceiptApi({ '/api/receipt?id=x&thumb=1': { status: 401, json: { code: 'NOT_PAIRED', message: 'pair again' } } })
+
+    await expect(getThumbnail('x', { db, fetchImpl: api.fetchImpl })).rejects.toMatchObject({ status: 401, code: 'NOT_PAIRED' })
+  })
 })

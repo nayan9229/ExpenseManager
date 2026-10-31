@@ -35,7 +35,8 @@ async function errorOf(res: Response): Promise<ApiError> {
 
 /**
  * The thumbnail of a Receipt: from Dexie when cached, else fetched from
- * `receipt?thumb=1` and stored. Rejects with an ApiError (or the network's
+ * `receipt?thumb=1` and stored. Null when Drive has not made one yet
+ * (nothing is stored, so the next call asks again). Rejects with an ApiError (or the network's
  * TypeError when offline and not cached).
  */
 export async function getThumbnail(fileId: string, deps: ReceiptDeps = {}): Promise<CachedThumbnail | null> {
@@ -43,7 +44,12 @@ export async function getThumbnail(fileId: string, deps: ReceiptDeps = {}): Prom
   const cached = await db.thumbnails.get(fileId)
   if (cached) return cached
   const res = await (deps.fetchImpl ?? fetch)(receiptUrl(fileId, { thumb: true }), { credentials: 'same-origin' })
-  if (!res.ok) throw await errorOf(res)
+  if (!res.ok) {
+    const err = await errorOf(res)
+    // Drive makes thumbnails shortly after an upload; ask again next time.
+    if (err.code === 'NO_THUMBNAIL') return null
+    throw err
+  }
   const blob = await res.blob()
   const row: CachedThumbnail = {
     fileId,
