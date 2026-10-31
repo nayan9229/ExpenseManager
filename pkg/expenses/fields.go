@@ -79,6 +79,16 @@ func checkNote(s string) (string, *ValidationError) {
 	return note, nil
 }
 
+// checkReceiptNumber trims a Receipt Number; blank means none. It is text
+// whatever it looks like (the Ledger adapter keeps `004521` and `4521/A`).
+func checkReceiptNumber(s string) (string, *ValidationError) {
+	number := strings.TrimSpace(s)
+	if utf8.RuneCountInString(number) > MaxReceiptNumberLength {
+		return "", invalid("INVALID_RECEIPT_NUMBER", "The Receipt Number can be at most %d characters", MaxReceiptNumberLength)
+	}
+	return number, nil
+}
+
 // findCategory matches a name the way a human would (case and surrounding
 // spaces ignored) and returns the Ledger's spelling.
 func findCategory(categories []ledger.Category, name string) (string, bool) {

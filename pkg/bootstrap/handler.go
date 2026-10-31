@@ -52,9 +52,19 @@ type Report struct {
 	// HeadersWritten lists the found tabs whose empty row 1 this run filled
 	// with the headers.
 	HeadersWritten []ledger.Tab `json:"headersWritten"`
+	// HeadersExtended are the found tabs whose row 1 lacked only trailing
+	// headers (a Ledger made before a column was appended) and the headers
+	// this run wrote at its end.
+	HeadersExtended []HeaderExtension `json:"headersExtended"`
 	// HeaderMismatches are the found tabs whose row 1 is not the headers.
 	// Bootstrap never overwrites them; the Admin fixes row 1 by hand.
 	HeaderMismatches []HeaderMismatch `json:"headerMismatches"`
+}
+
+// HeaderExtension is one tab whose row 1 Bootstrap finished.
+type HeaderExtension struct {
+	Tab   ledger.Tab `json:"tab"`
+	Added []string   `json:"added"`
 }
 
 // HeaderMismatch is one tab whose row 1 is not what the app reads.
@@ -105,6 +115,7 @@ func (s Service) serve(w http.ResponseWriter, r *http.Request) {
 		Tabs:             map[ledger.Tab]Item{},
 		Seeded:           map[ledger.Tab]int{},
 		HeadersWritten:   []ledger.Tab{},
+		HeadersExtended:  []HeaderExtension{},
 		HeaderMismatches: []HeaderMismatch{},
 	}
 	for _, tab := range ledger.Tabs {
@@ -112,6 +123,9 @@ func (s Service) serve(w http.ResponseWriter, r *http.Request) {
 		report.Seeded[tab] = 0
 		if ensured.HeaderWritten[tab] {
 			report.HeadersWritten = append(report.HeadersWritten, tab)
+		}
+		if added, ok := ensured.HeaderExtended[tab]; ok {
+			report.HeadersExtended = append(report.HeadersExtended, HeaderExtension{Tab: tab, Added: added})
 		}
 		if found, ok := ensured.HeaderMismatch[tab]; ok {
 			report.HeaderMismatches = append(report.HeaderMismatches, mismatchOf(tab, found))

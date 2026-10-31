@@ -182,3 +182,43 @@ func TestAnUpdateIsGuardedToo(t *testing.T) {
 		t.Errorf("note cell = %#v, want the literal text", got)
 	}
 }
+
+func TestAReceiptNumberIsAlwaysStoredAsText(t *testing.T) {
+	api, ledger := newFakeSheetsAPI(t)
+	ctx := context.Background()
+	e := sampleExpense()
+	numbers := []string{"004521", "4521/A", "12-2026", "=SUM(A1)", ""}
+
+	for i, n := range numbers {
+		e.ID = "id-" + strconv.Itoa(i)
+		e.ReceiptNumber = n
+		if err := ledger.Append(ctx, Expenses, [][]string{e.Row()}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if len(api.formulas) != 0 {
+		t.Errorf("Sheets evaluated formulas %q", api.formulas)
+	}
+	for i, n := range numbers {
+		stored := api.tabs[string(Expenses)][i+1][16]
+		if n == "" {
+			if stored != nil {
+				t.Errorf("blank Receipt Number stored as %#v, want an empty cell", stored)
+			}
+			continue
+		}
+		if stored != n {
+			t.Errorf("Receipt Number %q stored as %#v, want the text %q", n, stored, n)
+		}
+	}
+	snap, err := ledger.Read(ctx, Expenses)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, got := range ParseExpenses(snap.Rows[Expenses]) {
+		if got.ReceiptNumber != numbers[i] {
+			t.Errorf("Receipt Number %d read back as %q, want %q", i, got.ReceiptNumber, numbers[i])
+		}
+	}
+}
