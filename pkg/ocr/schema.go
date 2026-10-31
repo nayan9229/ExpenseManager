@@ -70,8 +70,8 @@ var fields = []string{"merchant", "expenseDate", "totalAmount", "taxAmount", "cu
 var confidenceFields = []string{"merchant", "expenseDate", "totalAmount", "category", "paymentMethod"}
 
 // ResponseSchema is generationConfig.responseSchema: the OpenAPI-subset
-// Schema object of the REST reference (docs/research/gemini-structured-ocr.md,
-// answer 2). Every key is required and the unknowns are nullable, so the
+// Schema object of the REST reference
+// (https://ai.google.dev/api/generate-content). Every key is required and the unknowns are nullable, so the
 // model always writes every key and says null rather than guessing.
 func ResponseSchema() map[string]any {
 	nullableString := func(desc string) map[string]any {

@@ -10,7 +10,7 @@ and nothing to pay for beyond a few paise of Gemini OCR per receipt.
 It is an installable web app (PWA): a Vite + React front end and seven small Go
 functions on Vercel that hold the Admin's Google credentials. The vocabulary
 used below (Member, Session, Pair Code, Offline Queue, ...) is defined in
-[GLOSSARY.md](GLOSSARY.md); decisions are in [docs/adr/](docs/adr/).
+[GLOSSARY.md](GLOSSARY.md).
 
 ## The two modes
 
@@ -82,8 +82,7 @@ Receipt OCR sends the Receipt image or PDF to the Gemini API. **Enable billing
 on the key's Google Cloud project before scanning real receipts** (Tier 1, a
 $5 prepay). On the free tier Google may use prompts and answers to improve its
 products and human reviewers may read them; on the paid tier it does not
-([docs/research/gemini-structured-ocr.md](docs/research/gemini-structured-ocr.md),
-answer 7). Every request also sends `"store": false`, so Gemini API request
+([Gemini API terms](https://ai.google.dev/gemini-api/terms)). Every request also sends `"store": false`, so Gemini API request
 logging is off. A receipt costs well under $0.01. Gemini's terms describe the
 API as not for consumer use and not for apps aimed at under-18s; this is a
 personal family tool run by the Admin, and the Admin accepts that.
@@ -156,7 +155,7 @@ pull request.
 
 A device is paired once and stays paired for a year (an httpOnly `fem_session`
 cookie). Pairing proves only that the device belongs to the Household; who is
-using it is picked on the device (ADR-0002).
+using it is picked on the device.
 
 1. **Your own phone first.** Open the production URL, type the
    `FAMILY_ACCESS_CODE` under "Or the Household Access Code" and tap "Pair
@@ -278,7 +277,7 @@ go vet ./... && go test ./... && npm run typecheck && npm test && npm run build
 Backend tests drive the HTTP handlers against in-memory fakes of the three
 seams (`Ledger`, `ReceiptStore`, `OCR`); frontend tests drive library
 functions and the Dexie layer (fake-indexeddb). There are no component tests;
-the UI is checked on real phones with [docs/release-checklist.md](docs/release-checklist.md).
+the UI is checked by hand on a real Android phone and a real iPhone.
 
 ### The one-time upload proof
 
@@ -329,7 +328,7 @@ the app right after a deploy is asked for the PIN again.)
   are not understood.
 - **Receipt preview capped at 4 MB.** Receipts are shown through the app's
   own `receipt` function, which serves files up to 4 MB (Vercel's response
-  limit, ADR-0003). A larger file (usually a big PDF) shows its thumbnail and
+  limit). A larger file (usually a big PDF) shows its thumbnail and
   an "Open in Google Drive" link. Photos taken in the app are shrunk to about
   300 KB, so this only affects large PDFs.
 - **OCR file-size edge.** OCR refuses files over 20 MB. Base64 makes the
@@ -338,7 +337,7 @@ the app right after a deploy is asked for the PIN again.)
   receipt. Please fill in the details." and the form is filled by hand.
 - **No push reminders.** Recurring Rules appear only in Admin Mode's "Due this
   month, not logged" card; nothing is scheduled or sent.
-- **Trust is per device, not per person** ([ADR-0002](docs/adr/0002-device-level-trust-model.md)).
+- **Trust is per device, not per person.**
   Any paired phone can act as any Member, and the Admin PIN is checked on the
   phone only. Do not pair a device outside the family; rotate `JWT_SECRET` to
   unpair every device (a lost phone), then pair the others again.
@@ -357,8 +356,6 @@ the app right after a deploy is asked for the PIN again.)
 - `pkg/` the Go code and its tests.
 - `src/` the React app; `src/lib/` holds the tested logic.
 - `scripts/` the setup wizard, the env-list check, the upload proof page.
-- `docs/` ADRs, research notes, the release checklist.
-- `.scratch/family-expense-manager/` the spec and the tickets.
 
 ## License
 

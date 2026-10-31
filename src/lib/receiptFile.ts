@@ -1,7 +1,8 @@
 /**
- * Turning a picked file into a Receipt ready to upload (spec "Receipt
- * pipeline (upload-first)", steps 1 to 3; docs/research/mobile-browser-
- * capabilities.md, sections 1, 2 and 8).
+ * Turning a picked file into a Receipt ready to upload: compress, convert
+ * HEIC, and hash. iOS Safari cannot encode WebP
+ * (https://developer.mozilla.org/en-US/docs/Web/API/HTMLCanvasElement/toBlob),
+ * so every raster Receipt is JPEG.
  *
  * - Photos and PDFs only; anything else is refused with one clear message.
  * - Raster images are shrunk to 1600px on the long edge and encoded as JPEG

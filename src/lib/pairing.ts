@@ -55,7 +55,7 @@ export function countdown(expiresAt: string, nowMs: number): { secondsLeft: numb
 
 /**
  * Which install guidance the Gatekeeper shows
- * (docs/research/mobile-browser-capabilities.md, question 6):
+ * (iOS: Add to Home Screen by hand; Android: `beforeinstallprompt`):
  * - `installed`: already running from the home screen; nothing to install.
  * - `ios-safari`: Share, then "Add to Home Screen" (iOS has no install prompt).
  * - `ios-other-browser`: Chrome, Firefox or an in-app browser on iOS; the

@@ -2,8 +2,8 @@
  * A thin wrapper over the browser's speech recognition for voice entry
  * (spec: "Voice"). Chrome has it unprefixed (139+) and as
  * `webkitSpeechRecognition`; iOS Safari only prefixed (14.5+, needs Siri);
- * iOS home-screen apps do not have it at all (docs/research/
- * mobile-browser-capabilities.md, question 3). So: feature-detect, never
+ * iOS home-screen apps do not have it at all
+ * (https://bugs.webkit.org/show_bug.cgi?id=225298). So: feature-detect, never
  * assume, and turn every way it can end into one outcome.
  */
 

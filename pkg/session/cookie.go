@@ -14,7 +14,7 @@ const CookieName = "fem_session"
 
 // Lifetime is how long a Session lasts: one year, below Chrome's 400-day cap
 // and exempt from iOS ITP's 7-day cap because the server sets it httpOnly
-// (docs/research/mobile-browser-capabilities.md, section 5).
+// (https://webkit.org/blog/8613/intelligent-tracking-prevention-2-1/).
 const Lifetime = 365 * 24 * time.Hour
 
 // ErrNoSecret means JWT_SECRET is unset or too short to sign anything.

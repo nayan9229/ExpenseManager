@@ -3,7 +3,7 @@ import type { ReactNode } from 'react'
 
 /**
  * The iPhone "Add to Home Screen" steps (iOS has no install prompt;
- * docs/research/mobile-browser-capabilities.md, question 6). Shown by the
+ * see Apple's web app configuration guide). Shown by the
  * Gatekeeper before pairing and by Simple Mode on a device paired in the
  * browser. `afterInstall` is the last step, which differs between the two;
  * `children` go under the steps (a note, a dismiss button).

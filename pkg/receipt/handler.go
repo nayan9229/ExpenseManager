@@ -19,8 +19,8 @@ import (
 )
 
 // MaxProxySize is the largest Receipt served whole. Vercel caps a Go
-// function's buffered response at 4.5 MB (docs/research/vercel-go-runtime.md
-// answer 4); 4 MB leaves room for headers.
+// function's buffered response at 4.5 MB
+// (https://vercel.com/docs/functions/limitations); 4 MB leaves room for headers.
 const MaxProxySize = 4 << 20
 
 // cacheFor is how long the browser may keep an answer. A Receipt's bytes

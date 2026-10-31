@@ -1,5 +1,7 @@
 # ExpenseManager
 
+`docs/` and `.scratch/` are git-ignored: the spec, tickets, ADRs, research notes and agent config below exist only in the maintainer's local checkout.
+
 ## Agent skills
 
 ### Issue tracker

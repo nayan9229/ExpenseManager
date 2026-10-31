@@ -20,7 +20,7 @@ import (
 )
 
 // UploadEndpoint is Drive's media upload URL
-// (docs/research/drive-resumable-upload-and-private-file-access.md, answer 1).
+// (https://developers.google.com/workspace/drive/api/guides/manage-uploads).
 const UploadEndpoint = "https://www.googleapis.com/upload/drive/v3/files"
 
 // fileFields is what File and Rename ask Drive for.

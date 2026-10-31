@@ -16,7 +16,7 @@ const (
 
 // FindChild returns the ID of the oldest non-trashed file called name with
 // the given MIME type directly under parentID, or "" when there is none
-// (docs/research/drive-resumable-upload-and-private-file-access.md, answer 6).
+// (https://developers.google.com/workspace/drive/api/guides/search-files).
 func FindChild(ctx context.Context, svc *drive.Service, parentID, name, mimeType string) (string, error) {
 	q := fmt.Sprintf("name = '%s' and mimeType = '%s' and '%s' in parents and trashed = false",
 		escapeQuery(name), mimeType, escapeQuery(parentID))

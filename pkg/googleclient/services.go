@@ -24,7 +24,7 @@ type Services struct {
 
 // scopes match what SETUP_GUIDE.md mints the refresh token with. `drive.file`
 // would be narrower but cannot write into a folder the app did not create
-// (docs/research/drive-resumable-upload-and-private-file-access.md, answer 7).
+// (https://developers.google.com/workspace/drive/api/guides/api-specific-auth).
 var scopes = []string{drive.DriveScope, sheets.SpreadsheetsScope}
 
 // tokenSources caches one refreshing token source per refresh token, so a
