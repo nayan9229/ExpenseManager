@@ -37,6 +37,21 @@ type Store interface {
 	// server's token. More than limit bytes is ErrTooLarge, so a caller
 	// never holds more than it can send on; ErrNotFound for an unknown ID.
 	Download(ctx context.Context, id string, limit int64) ([]byte, error)
+
+	// Thumbnail fetches Drive's generated thumbnail of f (its
+	// ThumbnailLink, which only a credentialed request may read).
+	// ErrNoThumbnail when Drive has not made one.
+	Thumbnail(ctx context.Context, f File) (Image, error)
+}
+
+// ErrNoThumbnail is returned by Thumbnail when the file has no
+// ThumbnailLink yet (Drive makes them shortly after an upload).
+var ErrNoThumbnail = errors.New("receiptstore: Drive has no thumbnail for the file")
+
+// Image is a thumbnail's bytes and their MIME type.
+type Image struct {
+	Bytes    []byte
+	MIMEType string
 }
 
 // ErrTooLarge is returned by Download when a file has more bytes than the

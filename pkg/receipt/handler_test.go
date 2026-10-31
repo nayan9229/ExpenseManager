@@ -138,6 +138,10 @@ func TestAFileOutsideTheReceiptStoreIsNeverRead(t *testing.T) {
 			f.store.AddFile(receiptstore.FakeFile{ID: "other-receipt", ParentID: month.ID, Name: "x.jpg", MIMEType: "image/jpeg", Content: photo})
 			return "other-receipt"
 		},
+		"a Receipt Store file with a thumbnail, placed loose": func(f fixture) string {
+			f.store.AddFile(receiptstore.FakeFile{ID: "loose-2", ParentID: householdID, Name: "y.jpg", MIMEType: "image/jpeg", Content: photo, Thumbnail: drivePNG, ThumbnailType: "image/png"})
+			return "loose-2"
+		},
 		"a folder of the Receipt Store": func(f fixture) string {
 			month, _ := receiptstore.EnsureMonthFolder(context.Background(), f.store, householdID, time.Date(2026, 10, 1, 0, 0, 0, 0, ledger.IST))
 			return month.ID
@@ -151,15 +155,15 @@ func TestAFileOutsideTheReceiptStoreIsNeverRead(t *testing.T) {
 			f := newFixture(t)
 			id := place(f)
 
-			for _, query := range []string{"?id=" + id} {
+			for _, query := range []string{"?id=" + id, "?id=" + id + "&thumb=1"} {
 				a := get(t, f, http.MethodGet, query, pairedCookie(t))
 
 				if a.status != http.StatusNotFound || a.body["code"] != "RECEIPT_NOT_FOUND" {
 					t.Errorf("%s: got %d %s, want 404 RECEIPT_NOT_FOUND", query, a.status, a.raw)
 				}
 			}
-			if len(f.store.Downloads) != 0 {
-				t.Errorf("Drive was read: downloads %v", f.store.Downloads)
+			if len(f.store.Downloads) != 0 || len(f.store.Thumbnails) != 0 {
+				t.Errorf("Drive was read: downloads %v, thumbnails %v", f.store.Downloads, f.store.Thumbnails)
 			}
 		})
 	}
@@ -203,5 +207,57 @@ func TestAReceiptOfExactly4MBIsServed(t *testing.T) {
 
 	if a.status != http.StatusOK || len(a.raw) != 4<<20 {
 		t.Fatalf("got %d with %d bytes, want 200 with 4194304", a.status, len(a.raw))
+	}
+}
+
+// A tiny PNG standing in for what Drive generates.
+var drivePNG = []byte("\x89PNG\r\n\x1a\nthumbnail of page one")
+
+func TestThumbReturnsDrivesThumbnailFetchedByTheServer(t *testing.T) {
+	cases := map[string]receiptstore.FakeFile{
+		"of a photo":         {ID: "photo-1", Name: "x.jpg", MIMEType: "image/jpeg", Content: photo, Thumbnail: drivePNG, ThumbnailType: "image/png"},
+		"of a PDF":           {ID: "bill-1", Name: "x.pdf", MIMEType: "application/pdf", Content: []byte("%PDF-1.7"), Thumbnail: drivePNG, ThumbnailType: "image/png"},
+		"of an oversize PDF": {ID: "big-1", Name: "x.pdf", MIMEType: "application/pdf", Size: 9_000_000, Thumbnail: drivePNG, ThumbnailType: "image/png"},
+	}
+	for name, file := range cases {
+		t.Run(name, func(t *testing.T) {
+			f := newFixture(t)
+			id := saveReceipt(t, f, file)
+
+			a := get(t, f, http.MethodGet, "?id="+id+"&thumb=1", pairedCookie(t))
+
+			if a.status != http.StatusOK {
+				t.Fatalf("status = %d, want 200; body %s", a.status, a.raw)
+			}
+			if !bytes.Equal(a.raw, drivePNG) || a.header.Get("Content-Type") != "image/png" {
+				t.Errorf("got %q as %q, want Drive's PNG", a.raw, a.header.Get("Content-Type"))
+			}
+			// The lightbox picks image or PDF view from this, before any download.
+			if got := a.header.Get("X-Receipt-Type"); got != file.MIMEType {
+				t.Errorf("X-Receipt-Type = %q, want %q", got, file.MIMEType)
+			}
+			if got := a.header.Get("Cache-Control"); got != "private, max-age=86400" {
+				t.Errorf("Cache-Control = %q, want private, max-age=86400", got)
+			}
+			if len(f.store.Thumbnails) != 1 || len(f.store.Downloads) != 0 {
+				t.Errorf("thumbnails fetched %v, downloads %v; want one thumbnail and no download", f.store.Thumbnails, f.store.Downloads)
+			}
+		})
+	}
+}
+
+// Drive makes thumbnails a little after the upload; until then there is
+// nothing to show, and the answer must not be cached.
+func TestThumbBeforeDriveHasMadeOneIsNotFound(t *testing.T) {
+	f := newFixture(t)
+	id := saveReceipt(t, f, receiptstore.FakeFile{ID: "fresh", Name: "x.jpg", MIMEType: "image/jpeg", Content: photo})
+
+	a := get(t, f, http.MethodGet, "?id="+id+"&thumb=1", pairedCookie(t))
+
+	if a.status != http.StatusNotFound || a.body["code"] != "NO_THUMBNAIL" {
+		t.Fatalf("got %d %s, want 404 NO_THUMBNAIL", a.status, a.raw)
+	}
+	if got := a.header.Get("Cache-Control"); got != "no-store" {
+		t.Errorf("Cache-Control = %q, want no-store", got)
 	}
 }

@@ -9,7 +9,9 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strconv"
+	"strings"
 
 	"google.golang.org/api/drive/v3"
 	"google.golang.org/api/googleapi"
@@ -116,6 +118,52 @@ func (d *Drive) Rename(ctx context.Context, r Rename) (File, error) {
 		return File{}, driveError("rename "+r.FileID, err)
 	}
 	return viewOf(f), nil
+}
+
+// thumbnailSize asks Drive for a thumbnail sharp enough for the lightbox's
+// PDF preview, not only for the list. Drive's links end in `=s220`; the
+// `=s<px>` suffix is the image server's size parameter (observed, not in
+// the Drive reference), so a link without it is fetched unchanged.
+var thumbnailSize = regexp.MustCompile(`=s\d+$`)
+
+// maxThumbnail bounds what a thumbnail fetch may read.
+const maxThumbnail = 2 << 20
+
+// Thumbnail implements Store: a GET of the short-lived thumbnailLink with
+// the OAuth client, because the link is useless without credentials for a
+// private file (research answer 5).
+func (d *Drive) Thumbnail(ctx context.Context, f File) (Image, error) {
+	if f.ThumbnailLink == "" {
+		return Image{}, ErrNoThumbnail
+	}
+	link := thumbnailSize.ReplaceAllString(f.ThumbnailLink, "=s800")
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, link, nil)
+	if err != nil {
+		return Image{}, err
+	}
+	res, err := d.http.Do(req)
+	if err != nil {
+		return Image{}, fmt.Errorf("drive: thumbnail of %s: %w", f.ID, err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode == http.StatusNotFound {
+		return Image{}, fmt.Errorf("drive: thumbnail of %s: %w", f.ID, ErrNoThumbnail)
+	}
+	if res.StatusCode != http.StatusOK {
+		return Image{}, fmt.Errorf("drive: thumbnail of %s: %s", f.ID, res.Status)
+	}
+	body, err := io.ReadAll(io.LimitReader(res.Body, maxThumbnail+1))
+	if err != nil {
+		return Image{}, fmt.Errorf("drive: thumbnail of %s: %w", f.ID, err)
+	}
+	if len(body) > maxThumbnail {
+		return Image{}, fmt.Errorf("drive: thumbnail of %s: %w", f.ID, ErrTooLarge)
+	}
+	mimeType := res.Header.Get("Content-Type")
+	if !strings.HasPrefix(mimeType, "image/") {
+		mimeType = http.DetectContentType(body)
+	}
+	return Image{Bytes: body, MIMEType: mimeType}, nil
 }
 
 func viewOf(f *drive.File) File {

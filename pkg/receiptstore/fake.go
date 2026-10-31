@@ -17,6 +17,8 @@ type Fake struct {
 	Uploads []FakeUpload
 	// Downloads records the ID of every file whose bytes were read.
 	Downloads []string
+	// Thumbnails records the ID of every file whose thumbnail was fetched.
+	Thumbnails []string
 	// Writes counts calls that changed something, so a test can prove an
 	// idempotent handler wrote nothing the second time.
 	Writes int
@@ -41,6 +43,9 @@ type FakeFile struct {
 	// Content is the file's bytes; Size, when zero, is len(Content).
 	Content []byte
 	Size    int64
+	// Thumbnail is what Drive generated; nil means "not made yet".
+	Thumbnail     []byte
+	ThumbnailType string
 }
 
 // FakeUpload is a resumable session as the server opened it.
@@ -167,8 +172,35 @@ func fakeView(file FakeFile) File {
 	}
 	return File{
 		ID: file.ID, Name: file.Name, MIMEType: file.MIMEType, Parents: slices.Clip([]string{file.ParentID}),
-		WebViewLink: "https://drive.google.com/file/d/" + file.ID + "/view?usp=drivesdk", Size: size, Trashed: file.Trashed,
+		WebViewLink: "https://drive.google.com/file/d/" + file.ID + "/view?usp=drivesdk", ThumbnailLink: fakeThumbnailLink(file),
+		Size: size, Trashed: file.Trashed,
 	}
+}
+
+func fakeThumbnailLink(file FakeFile) string {
+	if file.Thumbnail == nil {
+		return ""
+	}
+	return "https://lh3.googleusercontent.com/drive-storage/fake-" + file.ID + "=s220"
+}
+
+// Thumbnail implements Store: it answers by link, like Drive does.
+func (f *Fake) Thumbnail(_ context.Context, file File) (Image, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.Err != nil {
+		return Image{}, f.Err
+	}
+	if file.ThumbnailLink == "" {
+		return Image{}, ErrNoThumbnail
+	}
+	for _, stored := range f.Files {
+		if fakeThumbnailLink(stored) == file.ThumbnailLink {
+			f.Thumbnails = append(f.Thumbnails, stored.ID)
+			return Image{Bytes: slices.Clone(stored.Thumbnail), MIMEType: stored.ThumbnailType}, nil
+		}
+	}
+	return Image{}, ErrNotFound
 }
 
 // Download implements Store.

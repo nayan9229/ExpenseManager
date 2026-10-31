@@ -74,6 +74,18 @@ func (s Service) serve(w http.ResponseWriter, r *http.Request) {
 		writeStoreError(w, err)
 		return
 	}
+	if r.URL.Query().Get("thumb") != "" {
+		thumb, err := s.Store.Thumbnail(ctx, file)
+		if err != nil {
+			writeStoreError(w, err)
+			return
+		}
+		// The original's type, so the lightbox knows "PDF" before it
+		// downloads anything.
+		w.Header().Set("X-Receipt-Type", file.MIMEType)
+		writeBytes(w, thumb.MIMEType, thumb.Bytes)
+		return
+	}
 	if file.Size > MaxProxySize {
 		writeTooLarge(w, file)
 		return
@@ -126,6 +138,8 @@ func writeStoreError(w http.ResponseWriter, err error) {
 	// so the proxy does not even confirm that it exists.
 	case errors.Is(err, receiptstore.ErrNotFound), errors.Is(err, receiptstore.ErrNotAReceipt):
 		httpjson.WriteError(w, http.StatusNotFound, "RECEIPT_NOT_FOUND", "No Receipt has that ID")
+	case errors.Is(err, receiptstore.ErrNoThumbnail):
+		httpjson.WriteError(w, http.StatusNotFound, "NO_THUMBNAIL", "Google Drive has not made a preview of this Receipt yet")
 	default:
 		httpjson.WriteError(w, http.StatusBadGateway, "GOOGLE_ERROR", err.Error())
 	}
