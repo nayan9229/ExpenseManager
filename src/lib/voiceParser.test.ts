@@ -6,7 +6,7 @@ function category(name: string): Category {
   return { name, emoji: '📦', colorHex: '#6E7250', monthlyBudgetLimit: 0, visibleToRoles: ['all'] }
 }
 
-/** The seven Categories a fresh Household is seeded with (pkg/bootstrap/seeds.go). */
+/** The eight Categories a fresh Household is seeded with (pkg/bootstrap/seeds.go). */
 const seeded = [
   'Groceries & Vegetables',
   'Medical & Pharmacy',
@@ -14,6 +14,7 @@ const seeded = [
   'School & Kids',
   'Household & Help',
   'Dining & Outings',
+  'Petrol & Transport',
   'Other',
 ].map(category)
 
@@ -101,7 +102,41 @@ describe('Category', () => {
   })
 
   test('an unknown Category leaves the Category empty and keeps the words as the note', () => {
-    expect(parseTranscript('petrol 500 by cash', seeded)).toEqual({ amount: 500, paymentMethod: 'Cash', note: 'petrol' })
+    expect(parseTranscript('fireworks 500 by cash', seeded)).toEqual({ amount: 500, paymentMethod: 'Cash', note: 'fireworks' })
+  })
+
+  test.each([
+    ['petrol 500', 'Petrol & Transport'],
+    ['diesel 2000', 'Petrol & Transport'],
+    ['CNG 400', 'Petrol & Transport'],
+    ['fuel 1500 by card', 'Petrol & Transport'],
+    ['petrol pump 800', 'Petrol & Transport'],
+    ['parking 40', 'Petrol & Transport'],
+    ['toll 120', 'Petrol & Transport'],
+    ['auto 60', 'Petrol & Transport'],
+    ['rickshaw 50', 'Petrol & Transport'],
+    ['cab to the station 350', 'Petrol & Transport'],
+    ['taxi 600', 'Petrol & Transport'],
+    ['Uber 280 by UPI', 'Petrol & Transport'],
+    ['Ola 190', 'Petrol & Transport'],
+    ['Rapido 75', 'Petrol & Transport'],
+    ['two autos 120', 'Petrol & Transport'],
+    ['transport 200', 'Petrol & Transport'],
+    // Devanagari, which is what hi-IN recognition writes
+    ['पेट्रोल 500 रुपये', 'Petrol & Transport'],
+    ['डीज़ल 2000', 'Petrol & Transport'],
+    ['ऑटो वाले को 60', 'Petrol & Transport'],
+    ['टैक्सी 600', 'Petrol & Transport'],
+    ['पार्किंग 40', 'Petrol & Transport'],
+    ['टोल 120', 'Petrol & Transport'],
+    ['रिक्शा 50', 'Petrol & Transport'],
+  ])('%s -> %s', (transcript, name) => {
+    expect(parseTranscript(transcript, seeded).category).toBe(name)
+  })
+
+  test('a petrol word is only a Category when the Member can see Petrol & Transport', () => {
+    const without = seeded.filter((c) => c.name !== 'Petrol & Transport')
+    expect(parseTranscript('auto 60', without)).toEqual({ amount: 60, note: 'auto' })
   })
 
   test('the first Category mentioned wins', () => {
@@ -109,7 +144,8 @@ describe('Category', () => {
   })
 
   test('a Household Category outside the seeds matches by its own name', () => {
-    expect(parseTranscript('petrol 500', [...seeded, category('Petrol & Travel')]).category).toBe('Petrol & Travel')
+    const withoutPetrol = seeded.filter((c) => c.name !== 'Petrol & Transport')
+    expect(parseTranscript('petrol 500', [...withoutPetrol, category('Petrol & Travel')]).category).toBe('Petrol & Travel')
   })
 
   test('a Category the Member cannot see is never suggested', () => {
