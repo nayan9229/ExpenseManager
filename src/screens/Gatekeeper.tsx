@@ -123,7 +123,7 @@ export function Gatekeeper({ onPaired }: { onPaired: () => void }) {
             aria-describedby="pair-code-error"
             className={
               fieldClass +
-              'py-3 text-center font-mono text-4xl font-bold uppercase tracking-[0.2em] placeholder:text-sand ' +
+              'px-3 py-3 text-center font-mono text-3xl font-bold uppercase tracking-[0.15em] placeholder:text-sand ' +
               (failedOn('pairCode') ? 'border-terracotta' : 'border-sand')
             }
           />

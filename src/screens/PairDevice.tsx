@@ -63,11 +63,11 @@ export function PairDevice({ onClose, onUnpaired }: { onClose: () => void; onUnp
       aria-labelledby="pair-title"
       className="fixed inset-0 z-50 overflow-y-auto bg-warm-white outline-none"
     >
-      <div className="mx-auto flex min-h-dvh max-w-md flex-col gap-6 px-5 py-8">
+      <div className="mx-auto flex min-h-dvh max-w-md flex-col gap-5 px-5 py-6">
         <header className="flex items-start justify-between gap-4">
           <div className="flex flex-col gap-1">
             <p className="text-base font-semibold uppercase tracking-wide text-olive-sage">Admin</p>
-            <h1 id="pair-title" className="text-3xl font-bold leading-tight">
+            <h1 id="pair-title" className="text-2xl font-bold leading-tight">
               Pair a device
             </h1>
           </div>
@@ -76,12 +76,9 @@ export function PairDevice({ onClose, onUnpaired }: { onClose: () => void; onUnp
           </Button>
         </header>
 
-        <p className="flex items-start gap-3 rounded-2xl bg-sand p-4 text-lg">
-          <Smartphone aria-hidden="true" className="mt-0.5 size-7 shrink-0 text-olive-sage" />
-          <span>
-            <strong>Install the app first, then pair inside it.</strong> On an iPhone, add the app to the Home Screen, open
-            it, and type the code. On Android, scan the QR code with the camera.
-          </span>
+        <p className="flex items-center gap-3 rounded-2xl bg-sand px-4 py-3 text-lg font-bold">
+          <Smartphone aria-hidden="true" className="size-7 shrink-0 text-olive-sage" />
+          Install the app first, then pair inside it.
         </p>
 
         {token.data ? (
@@ -127,6 +124,12 @@ export function PairDevice({ onClose, onUnpaired }: { onClose: () => void; onUnp
         >
           {token.isFetching ? 'Refreshing…' : 'Refresh'}
         </Button>
+
+        <p className="text-lg">
+          <strong>iPhone:</strong> add the app to the Home Screen (Share, then Add to Home Screen), open it, and type the
+          code. <strong>Android:</strong> scan the QR code with the camera, or type the code. The code works on any number
+          of devices until it runs out.
+        </p>
       </div>
     </div>
   )
@@ -164,7 +167,7 @@ function QrCodeImage({ value }: { value: string }) {
       aria-label="QR code that opens the app and pairs it"
       viewBox={`0 0 ${size} ${size}`}
       shapeRendering="crispEdges"
-      className="mx-auto aspect-square w-full max-w-72 rounded-2xl bg-warm-white"
+      className="mx-auto aspect-square w-full max-w-60 rounded-2xl bg-warm-white"
     >
       <rect width={size} height={size} className="fill-warm-white" />
       <path d={path} className="fill-mocha" />
