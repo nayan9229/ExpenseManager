@@ -19,6 +19,7 @@ import {
 } from 'lucide-react'
 import { useEffect, useState, type ReactNode } from 'react'
 import { Button } from '../components/Button'
+import { OfflineQueuePanel } from '../components/OfflineQueuePanel'
 import { UpdateBanner } from '../components/UpdateBanner'
 import { ApiError, runBootstrap, type Category, type Expense, type Member, type ReadModel } from '../lib/api'
 import { markPaidBack, useMonthModel, usePendingReimbursements } from '../lib/adminData'
@@ -38,7 +39,7 @@ import {
 import { dayLabel, istToday } from '../lib/istDate'
 import { monthLabel, monthOf, shiftMonth, type Month } from '../lib/month'
 import type { ExpenseDraft } from '../lib/quickExpense'
-import { queryClient, readModelKey } from '../lib/readModel'
+import { queryClient, readModelKey, useOfflineQueue } from '../lib/readModel'
 import { formatRupees } from '../lib/rupees'
 
 type Props = {
@@ -77,6 +78,7 @@ export function AdminMode(props: Props) {
   const thisMonth = monthOf(today)
   const monthModel = useMonthModel(month)
   const pendingModel = usePendingReimbursements()
+  const offlineItems = useOfflineQueue()
   const data = monthModel.data
   const members = data?.members ?? model.members
   const categories = data?.categories ?? model.categories
@@ -105,6 +107,9 @@ export function AdminMode(props: Props) {
         <p className="text-base font-semibold uppercase tracking-wide text-olive-sage">Admin Mode</p>
         <h1 className="text-3xl font-bold leading-tight">Hello, {member.name}.</h1>
       </header>
+
+      {/* A change refused after Save already let the Admin go (a late 409) waits here. */}
+      <OfflineQueuePanel items={offlineItems} expenses={model.expenses} />
 
       <div className="grid grid-cols-2 gap-4">
         <button

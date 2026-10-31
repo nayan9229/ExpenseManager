@@ -2,7 +2,7 @@ import { IDBKeyRange, indexedDB } from 'fake-indexeddb'
 import { describe, expect, test } from 'vitest'
 import { ApiError, duplicateReceiptOf, type CreateExpenseInput, type Expense, type ReadModel } from './api'
 import { ExpenseDb } from './db'
-import { OfflineQueue } from './offlineQueue'
+import { OfflineQueue, retryChoice } from './offlineQueue'
 import type { PutFile } from './upload'
 
 let dbCount = 0
@@ -489,5 +489,63 @@ describe('a lost Session', () => {
     expect(report).toMatchObject({ unpaired: true, synced: 0 })
     expect(server.calls).toHaveLength(1)
     expect((await queue.items()).map((i) => i.state)).toEqual(['pending', 'pending'])
+  })
+})
+
+describe('a slow server', () => {
+  test('Save gives up waiting after 1.5 seconds by default: the Expense is saved on the phone', async () => {
+    const db = freshDb()
+    const hanging: typeof fetch = () => new Promise(() => {})
+    const queue = new OfflineQueue({ db, fetchImpl: hanging, isOffline: () => false, retryLater: () => {} })
+    await queue.remember(server0)
+
+    const started = Date.now()
+    const saved = await queue.save({ kind: 'create', payload: input('new-1') })
+    const waited = Date.now() - started
+
+    expect(saved.queued).toBe(true)
+    expect(waited).toBeGreaterThanOrEqual(1_400)
+    expect(waited).toBeLessThan(2_500)
+  })
+
+  test('a duplicate Receipt refused after Save gave up becomes Needs attention, and Add anyway saves it', async () => {
+    const db = freshDb()
+    const server = fakeServer()
+    const earlier = stored('old-1', { fileHash: 'ab12' })
+    server.rows.set('old-1', earlier)
+    let release!: () => void
+    const late = new Promise<void>((resolve) => (release = resolve))
+    let first = true
+    const slow: typeof fetch = async (input, init) => {
+      if (first) {
+        first = false
+        await late
+        return Response.json({ code: 'DUPLICATE_RECEIPT', message: 'This receipt was already added', expense: earlier }, { status: 409 })
+      }
+      return server.fetchImpl(input, init)
+    }
+    const queue = new OfflineQueue({ db, fetchImpl: slow, saveWaitMs: 5, isOffline: () => false, retryLater: () => {} })
+    await queue.remember(server0)
+
+    const saved = await queue.save({ kind: 'create', payload: input('new-1', { fileHash: 'ab12', driveFileId: 'f1' }) })
+    expect(saved.queued).toBe(true)
+    release()
+    await queue.sync()
+
+    const [item] = await queue.items()
+    expect(item).toMatchObject({ state: 'needs-attention', lastError: { status: 409, code: 'DUPLICATE_RECEIPT', message: 'This receipt was already added' } })
+    expect(retryChoice(item!)).toEqual({ label: 'Add anyway', force: true })
+
+    await queue.retry(item!.seq!, retryChoice(item!))
+
+    expect(server.bodies.at(-1)).toMatchObject({ id: 'new-1', force: true })
+    expect(await queue.items()).toEqual([])
+    expect((await queue.readModel())?.expenses.map((e) => e.id)).toContain('new-1')
+  })
+
+  test('any other refusal is retried as it is', () => {
+    const base = { seq: 1, expenseId: 'e', queuedAt: '', attempts: 1, state: 'needs-attention' as const }
+    const refused = { ...base, kind: 'delete' as const, payload: { id: 'e' }, lastError: { status: 422, code: 'INVALID_NOTE', message: 'Too long' } }
+    expect(retryChoice(refused)).toEqual({ label: 'Retry', force: false })
   })
 })

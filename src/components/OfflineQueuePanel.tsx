@@ -2,6 +2,7 @@ import { Check, CloudOff, RefreshCw, Trash2, TriangleAlert } from 'lucide-react'
 import { useState } from 'react'
 import type { Expense } from '../lib/api'
 import type { QueueItem, QueueState } from '../lib/db'
+import { retryChoice } from '../lib/offlineQueue'
 import { discardQueued, retryQueued } from '../lib/readModel'
 import { formatRupees } from '../lib/rupees'
 import { Button } from './Button'
@@ -67,7 +68,7 @@ export function OfflineQueuePanel({ items, expenses }: { items: QueueItem[]; exp
       )}
       {refused.map((item) => {
         const seq = item.seq ?? 0
-        const duplicate = item.lastError?.code === 'DUPLICATE_RECEIPT'
+        const choice = retryChoice(item)
         return (
           <div key={seq} role="alert" className="flex flex-col gap-3 rounded-2xl border-4 border-terracotta bg-warm-white p-4">
             <p className="flex items-start gap-3 text-xl font-bold">
@@ -77,12 +78,12 @@ export function OfflineQueuePanel({ items, expenses }: { items: QueueItem[]; exp
             <p className="text-lg font-semibold">{describe(item, expenses)}</p>
             <p className="break-words text-lg">{item.lastError?.message ?? 'The server refused this change.'}</p>
             <Button
-              icon={duplicate ? Check : RefreshCw}
+              icon={choice.force ? Check : RefreshCw}
               disabled={busy !== null}
-              onClick={() => void act(seq, () => retryQueued(seq, { force: duplicate }))}
+              onClick={() => void act(seq, () => retryQueued(seq, { force: choice.force }))}
               className="w-full"
             >
-              {busy === seq ? 'Sending…' : duplicate ? 'Add anyway' : 'Retry'}
+              {busy === seq ? 'Sending…' : choice.label}
             </Button>
             <Button icon={Trash2} variant="secondary" disabled={busy !== null} onClick={() => void act(seq, () => discardQueued(seq))} className="w-full">
               Discard

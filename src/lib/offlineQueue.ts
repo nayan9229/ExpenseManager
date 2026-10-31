@@ -39,12 +39,28 @@ export type OfflineQueueDeps = {
   sleep?: (ms: number) => Promise<void>
   /** Called after every Sync run, e.g. to refresh what the screens show. */
   onSynced?: (report: SyncReport) => void
-  /** How long Save waits for the server before saying "Saved on phone" (default 8 s). */
+  /** How long Save waits for the server before saying "Saved on phone" (default SAVE_WAIT_MS). */
   saveWaitMs?: number
   /** True when the browser knows it has no network (`navigator.onLine` false): Save does not wait then. */
   isOffline?: () => boolean
   /** Asks for another Sync run in `ms`; the default keeps one browser timer. Tests record the waits. */
   retryLater?: (ms: number, run: () => void) => void
+}
+
+/**
+ * How long Save waits for the server before it says "Saved on phone" and
+ * lets the Member go (spec: Save succeeds instantly). A refusal that
+ * arrives later is not lost: the item turns "Needs attention" with the
+ * server's message (retryChoice says what Retry does).
+ */
+export const SAVE_WAIT_MS = 1_500
+
+/**
+ * What Retry does for a refused item: a 409 DUPLICATE_RECEIPT is sent again
+ * with `force` ("Add anyway"); anything else is sent as it is.
+ */
+export function retryChoice(item: QueueItem): { label: 'Add anyway' | 'Retry'; force: boolean } {
+  return item.lastError?.code === 'DUPLICATE_RECEIPT' ? { label: 'Add anyway', force: true } : { label: 'Retry', force: false }
 }
 
 /** Wait before the next automatic try after `attempts` failed ones: 2 s doubling, at most 5 minutes. */
@@ -177,7 +193,7 @@ export class OfflineQueue {
     retryLater = browserRetry,
     put,
     sleep,
-    saveWaitMs = 8_000,
+    saveWaitMs = SAVE_WAIT_MS,
     isOffline = () => globalThis.navigator?.onLine === false,
     onSynced,
   }: OfflineQueueDeps) {
