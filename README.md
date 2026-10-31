@@ -22,15 +22,15 @@ Category grid filtered by the Member's Role, Payment Method chips, Today /
 Yesterday / a date, a note and an "I paid from my own pocket" switch. Scan
 Receipt takes a photo (or a gallery image or PDF), shrinks it on the phone,
 uploads it straight to Drive and lets Gemini fill in the form, including the
-Receipt No. printed on the bill; the Member only checks and taps Save. The same
-Receipt added twice (the same file, or the same Receipt No. and amount) gets an
+Receipt Number printed on the Receipt; the Member only checks and taps Save. The same
+Receipt added twice (the same file, or the same Receipt Number and amount) gets an
 "already added … Add anyway" warning. Tapping an Expense opens it to fix or delete. With no
 signal, a save waits on the phone ("Saved on phone") and Syncs by itself when
 the phone is back online. Text is 18px or larger, every button at least 56px.
 
 **Admin Mode** (the Admin, behind a 4-digit PIN). Burn Rate bars per Category
 for the month (terracotta when over Budget) and a Household total, a Category
-breakdown, a Member filter, each Expense's Receipt No. under its note, month-to-month navigation, the Reimbursable Queue
+breakdown, a Member filter, each Expense's Receipt Number under its note, month-to-month navigation, the Reimbursable Queue
 grouped by Member with "Mark done", a "Due this month, not logged" card from
 the Recurring Rules with one-tap prefill, and buttons to open the Ledger,
 Repair (re-run Bootstrap), Pair a device (QR + Pair Code), Scan Receipt, Quick

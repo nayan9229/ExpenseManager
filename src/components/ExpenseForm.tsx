@@ -313,7 +313,7 @@ export function ExpenseForm({
             autoCapitalize="characters"
             spellCheck={false}
             enterKeyHint="done"
-            placeholder="The bill number printed on it"
+            placeholder="The Receipt Number printed on it"
             onChange={(e) => change({ receiptNumber: e.target.value })}
             className="min-h-touch w-full rounded-2xl border-2 border-mocha bg-warm-white px-4 text-xl outline-none focus-visible:ring-4 focus-visible:ring-olive-sage"
           />
