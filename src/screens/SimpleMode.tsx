@@ -1,12 +1,16 @@
-import { Camera, CircleCheck, Keyboard, Pencil, Trash2, Users } from 'lucide-react'
+import { Camera, Check, CircleCheck, Keyboard, Pencil, Trash2, Users } from 'lucide-react'
 import { useState } from 'react'
 import { Button } from '../components/Button'
+import { IosInstallSteps } from '../components/IosInstallSteps'
 import { NEEDS_ATTENTION, OfflineQueuePanel, QueueBadge, SAVED_ON_PHONE } from '../components/OfflineQueuePanel'
 import { ReceiptLightbox } from '../components/ReceiptLightbox'
 import { ReceiptThumb } from '../components/ReceiptThumb'
 import { VoiceEntry, type VoiceResult } from '../components/VoiceEntry'
 import type { Category, Expense, Member } from '../lib/api'
+import { dismissInstallHint, installHintDismissed } from '../lib/device'
 import { canEdit } from '../lib/editExpense'
+import { currentInstallPlatform } from '../lib/installPrompt'
+import { showsInstallHintInSimpleMode } from '../lib/pairing'
 import { dayLabel, istToday } from '../lib/istDate'
 import type { QueueState } from '../lib/db'
 import { waitingStates } from '../lib/offlineQueue'
@@ -89,6 +93,8 @@ export function SimpleMode({
       </div>
 
       <VoiceEntry member={member} categories={categories} onResult={onVoice} />
+
+      <InstallHint />
 
       <p role="status" className="min-h-8 text-lg">
         {justSaved && (
@@ -225,5 +231,42 @@ function ExpenseRow({
         <div className={row}>{body}</div>
       )}
     </li>
+  )
+}
+
+/**
+ * The iPhone "Add to Home Screen" steps for a device paired in the browser
+ * (a scanned QR link pairs Safari). Safari can clear a site's storage after
+ * a week without use, and the Home Screen app keeps its own storage, so the
+ * app is better installed and paired once more there. Shown until dismissed
+ * on this device; never in the Home Screen app itself.
+ */
+function InstallHint() {
+  const [platform] = useState(() => currentInstallPlatform())
+  const [dismissed, setDismissed] = useState(() => installHintDismissed())
+  if (platform !== 'ios-safari' && platform !== 'ios-other-browser') return null
+  if (!showsInstallHintInSimpleMode({ platform, dismissed })) return null
+  return (
+    <IosInstallSteps
+      platform={platform}
+      afterInstall={
+        <>
+          Open <strong>Expenses</strong> from the Home Screen. It asks to be paired once more: ask the Admin for a Pair
+          Code.
+        </>
+      }
+    >
+      <p className="text-base">What you log here is saved either way.</p>
+      <Button
+        icon={Check}
+        onClick={() => {
+          dismissInstallHint()
+          setDismissed(true)
+        }}
+        className="w-full"
+      >
+        Got it, hide this
+      </Button>
+    </IosInstallSteps>
   )
 }

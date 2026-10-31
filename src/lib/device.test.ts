@@ -3,6 +3,8 @@ import { describe, expect, test } from 'vitest'
 import { ExpenseDb } from './db'
 import {
   deviceSettingsSaved,
+  dismissInstallHint,
+  installHintDismissed,
   loadDeviceSettings,
   forgetBootstrapped,
   forgetMember,
@@ -109,6 +111,22 @@ describe('speech language', () => {
   test('a broken store reads English (India) and never throws', () => {
     expect(speechLanguage(brokenStore)).toBe('en-IN')
     expect(() => setSpeechLanguage('hi-IN', brokenStore)).not.toThrow()
+  })
+})
+
+describe('install hint dismissed', () => {
+  test('is not dismissed on a fresh device and stays dismissed once dismissed', () => {
+    const store = memoryStore()
+    expect(installHintDismissed(store)).toBe(false)
+
+    dismissInstallHint(store)
+    expect(installHintDismissed(store)).toBe(true)
+    expect(installHintDismissed(store)).toBe(true)
+  })
+
+  test('a broken store reads not dismissed and never throws', () => {
+    expect(installHintDismissed(brokenStore)).toBe(false)
+    expect(() => dismissInstallHint(brokenStore)).not.toThrow()
   })
 })
 

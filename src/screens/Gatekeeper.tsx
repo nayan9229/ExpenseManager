@@ -1,6 +1,7 @@
-import { Download, EllipsisVertical, Hash, KeyRound, LoaderCircle, Share, SquarePlus, TriangleAlert } from 'lucide-react'
+import { Download, EllipsisVertical, Hash, KeyRound, LoaderCircle, TriangleAlert } from 'lucide-react'
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { Button } from '../components/Button'
+import { IosInstallSteps } from '../components/IosInstallSteps'
 import { ApiError, pairDevice, pairWithCode } from '../lib/api'
 import { currentInstallPlatform, takePairToken, useInstallPrompt } from '../lib/installPrompt'
 import { formatPairCode, normalisePairCode, PAIR_CODE_LENGTH, type InstallPlatform } from '../lib/pairing'
@@ -192,44 +193,14 @@ function InstallHint({ platform }: { platform: InstallPlatform }) {
 
   if (platform === 'installed' || platform === 'other') return null
 
+  if (platform === 'ios-safari' || platform === 'ios-other-browser') {
+    return (
+      <IosInstallSteps platform={platform} afterInstall={<>Open <strong>Expenses</strong> from the Home Screen and type the Pair Code there.</>}>
+        {platform === 'ios-safari' && <p className="text-base">Pairing here in Safari does not carry over to the Home Screen app.</p>}
+      </IosInstallSteps>
+    )
+  }
   const box = 'flex flex-col gap-3 rounded-3xl bg-sand p-5 text-lg'
-  if (platform === 'ios-safari') {
-    return (
-      <section aria-labelledby="install-title" className={box}>
-        <h2 id="install-title" className="text-xl font-bold">
-          First, add the app to your Home Screen
-        </h2>
-        <ol className="flex flex-col gap-3">
-          <Step n={1}>
-            Tap the Share button <Share aria-label="Share" className="inline size-6 align-text-bottom" /> at the bottom of
-            Safari.
-          </Step>
-          <Step n={2}>
-            Scroll down and tap <strong>Add to Home Screen</strong>{' '}
-            <SquarePlus aria-hidden="true" className="inline size-6 align-text-bottom" />.
-          </Step>
-          <Step n={3}>
-            Tap <strong>Add</strong>.
-          </Step>
-          <Step n={4}>Open Family Expenses from the Home Screen and type the Pair Code there.</Step>
-        </ol>
-        <p className="text-base">Pairing here in Safari does not carry over to the Home Screen app.</p>
-      </section>
-    )
-  }
-  if (platform === 'ios-other-browser') {
-    return (
-      <section aria-labelledby="install-title" className={box}>
-        <h2 id="install-title" className="text-xl font-bold">
-          First, add the app to your Home Screen
-        </h2>
-        <p>
-          Open this page in <strong>Safari</strong>, tap Share <Share aria-label="Share" className="inline size-6 align-text-bottom" />,
-          then <strong>Add to Home Screen</strong>. Open the app from the Home Screen and type the Pair Code there.
-        </p>
-      </section>
-    )
-  }
   // Android
   return (
     <section aria-labelledby="install-title" className={box}>
@@ -253,19 +224,5 @@ function InstallHint({ platform }: { platform: InstallPlatform }) {
         </p>
       )}
     </section>
-  )
-}
-
-function Step({ n, children }: { n: number; children: ReactNode }) {
-  return (
-    <li className="flex items-start gap-3">
-      <span
-        aria-hidden="true"
-        className="flex size-8 shrink-0 items-center justify-center rounded-full bg-mocha text-base font-bold text-warm-white"
-      >
-        {n}
-      </span>
-      <span>{children}</span>
-    </li>
   )
 }

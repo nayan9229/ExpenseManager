@@ -1,6 +1,7 @@
 /**
  * What this device remembers between loads: the last selected Member,
- * whether Bootstrap has run from here, and the voice entry language.
+ * whether Bootstrap has run from here, the voice entry language, and
+ * whether the install steps were dismissed.
  *
  * Kept in the device database (Dexie, `settings` table) since ticket 09.
  * Reads stay synchronous: `loadDeviceSettings` fills an in-memory copy
@@ -19,6 +20,7 @@ const SELECTED_MEMBER = 'fem.selectedMemberId'
 const BOOTSTRAPPED = 'fem.bootstrapped'
 const SPEECH_LANGUAGE = 'fem.speechLanguage'
 const PERSIST_REQUESTED = 'fem.persistRequested'
+const INSTALL_HINT_DISMISSED = 'fem.installHintDismissed'
 /** Set once the localStorage values were moved, so they are never read again. */
 const MOVED_FROM_LOCAL_STORAGE = 'fem.movedFromLocalStorage'
 const LEGACY_KEYS = [SELECTED_MEMBER, BOOTSTRAPPED, SPEECH_LANGUAGE]
@@ -186,4 +188,17 @@ export function speechLanguage(store: DeviceStore | null = defaultStore()): Spee
 
 export function setSpeechLanguage(language: SpeechLanguage, store: DeviceStore | null = defaultStore()): void {
   write(store, SPEECH_LANGUAGE, language)
+}
+
+/**
+ * Whether the Member closed Simple Mode's "Add to Home Screen" steps on this
+ * device. Safari and the Home Screen app keep separate storage on iOS, so
+ * this only ever silences the hint in the browser where it was dismissed.
+ */
+export function installHintDismissed(store: DeviceStore | null = defaultStore()): boolean {
+  return read(store, INSTALL_HINT_DISMISSED) === '1'
+}
+
+export function dismissInstallHint(store: DeviceStore | null = defaultStore()): void {
+  write(store, INSTALL_HINT_DISMISSED, '1')
 }

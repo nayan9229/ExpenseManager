@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { countdown, formatPairCode, installPlatform, normalisePairCode, pairTokenFromUrl } from './pairing'
+import { showsInstallHintInSimpleMode, countdown, formatPairCode, installPlatform, normalisePairCode, pairTokenFromUrl } from './pairing'
 
 describe('pairTokenFromUrl', () => {
   test('takes the pairToken from the QR link and leaves a clean address', () => {
@@ -102,5 +102,23 @@ describe('installPlatform', () => {
   test('an app already opened from the home screen needs no install steps', () => {
     expect(installPlatform({ userAgent: ua.iphoneSafari, maxTouchPoints: 5, standalone: true })).toBe('installed')
     expect(installPlatform({ userAgent: ua.androidChrome, maxTouchPoints: 5, standalone: true })).toBe('installed')
+  })
+})
+
+describe('showsInstallHintInSimpleMode', () => {
+  test('an iPhone in Safari sees the Add to Home Screen steps until they are dismissed', () => {
+    expect(showsInstallHintInSimpleMode({ platform: 'ios-safari', dismissed: false })).toBe(true)
+    expect(showsInstallHintInSimpleMode({ platform: 'ios-safari', dismissed: true })).toBe(false)
+  })
+
+  test('an iPhone in Chrome or an in-app browser is pointed to Safari the same way', () => {
+    expect(showsInstallHintInSimpleMode({ platform: 'ios-other-browser', dismissed: false })).toBe(true)
+    expect(showsInstallHintInSimpleMode({ platform: 'ios-other-browser', dismissed: true })).toBe(false)
+  })
+
+  test('nothing to install from the Home Screen app, on Android (Install button in the Gatekeeper) or on a desktop', () => {
+    expect(showsInstallHintInSimpleMode({ platform: 'installed', dismissed: false })).toBe(false)
+    expect(showsInstallHintInSimpleMode({ platform: 'android', dismissed: false })).toBe(false)
+    expect(showsInstallHintInSimpleMode({ platform: 'other', dismissed: false })).toBe(false)
   })
 })
