@@ -1,11 +1,16 @@
+import { IDBKeyRange, indexedDB } from 'fake-indexeddb'
 import { describe, expect, test } from 'vitest'
+import { ExpenseDb } from './db'
 import {
+  deviceSettingsSaved,
+  loadDeviceSettings,
   forgetBootstrapped,
   forgetMember,
   isBootstrapped,
   markBootstrapped,
   rememberMember,
   rememberedMemberId,
+  requestPersistentStorage,
   setSpeechLanguage,
   speechLanguage,
   type DeviceStore,
@@ -104,5 +109,72 @@ describe('speech language', () => {
   test('a broken store reads English (India) and never throws', () => {
     expect(speechLanguage(brokenStore)).toBe('en-IN')
     expect(() => setSpeechLanguage('hi-IN', brokenStore)).not.toThrow()
+  })
+})
+
+describe('device settings kept in the device database', () => {
+  let n = 0
+  const dbNamed = (name: string) => new ExpenseDb(name, { indexedDB, IDBKeyRange })
+
+  test('what the old localStorage held is read once, moved into the database, and survives a reload', async () => {
+    const name = `device-${++n}`
+    const legacy = memoryStore()
+    legacy.setItem('fem.selectedMemberId', 'ramesh')
+    legacy.setItem('fem.bootstrapped', '1')
+    legacy.setItem('fem.speechLanguage', 'hi-IN')
+    legacy.setItem('unrelated', 'kept')
+
+    await loadDeviceSettings(dbNamed(name), legacy)
+
+    expect(rememberedMemberId()).toBe('ramesh')
+    expect(isBootstrapped()).toBe(true)
+    expect(speechLanguage()).toBe('hi-IN')
+    expect([...legacy.map.keys()]).toEqual(['unrelated'])
+
+    rememberMember('admin')
+    setSpeechLanguage('en-IN')
+    await deviceSettingsSaved()
+
+    // A reload, with a stale value somehow back in localStorage: not read again.
+    const stale = memoryStore()
+    stale.setItem('fem.selectedMemberId', 'someone-else')
+    await loadDeviceSettings(dbNamed(name), stale)
+
+    expect(rememberedMemberId()).toBe('admin')
+    expect(speechLanguage()).toBe('en-IN')
+    expect(isBootstrapped()).toBe(true)
+  })
+
+  test('a fresh device with nothing anywhere starts empty', async () => {
+    await loadDeviceSettings(dbNamed(`device-${++n}`), memoryStore())
+
+    expect(rememberedMemberId()).toBeNull()
+    expect(isBootstrapped()).toBe(false)
+    expect(speechLanguage()).toBe('en-IN')
+  })
+})
+
+describe('persistent storage', () => {
+  function fakeStorage(granted: boolean) {
+    const calls: string[] = []
+    return {
+      calls,
+      persisted: async () => (calls.push('persisted'), false),
+      persist: async () => (calls.push('persist'), granted),
+    }
+  }
+
+  test('is asked for on the first run only, whatever the answer', async () => {
+    const store = memoryStore()
+    const storage = fakeStorage(false)
+
+    expect(await requestPersistentStorage(storage, store)).toBe(false)
+    expect(await requestPersistentStorage(storage, store)).toBeNull()
+
+    expect(storage.calls).toEqual(['persisted', 'persist'])
+  })
+
+  test('a browser without the API is left alone', async () => {
+    expect(await requestPersistentStorage(undefined, memoryStore())).toBeNull()
   })
 })
