@@ -1,12 +1,13 @@
 import { CircleDashed, RefreshCw, TriangleAlert } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import { Button } from './components/Button'
-import { ApiError, getSessionState } from './lib/api'
+import { ApiError, getSessionState, type Expense } from './lib/api'
 import { forgetMember, rememberMember, rememberedMemberId } from './lib/device'
 import { useReadModel } from './lib/readModel'
 import { Gatekeeper } from './screens/Gatekeeper'
-import { Home } from './screens/Home'
 import { ProfileSwitcher } from './screens/ProfileSwitcher'
+import { QuickExpense } from './screens/QuickExpense'
+import { SimpleMode } from './screens/SimpleMode'
 
 type Boot =
   | { status: 'checking' }
@@ -50,22 +51,30 @@ export default function App() {
   }
 }
 
+type View = { kind: 'home'; justSaved: Expense | null } | { kind: 'quickExpense' }
+
 /**
  * A paired device: Bootstrap once, load the read model, then either the
- * remembered Member's home or the profile switcher. A 401 means the Session
- * is gone (secret rotated): back to the Gatekeeper.
+ * remembered Member's Simple Mode or the profile switcher. A 401 means the
+ * Session is gone (secret rotated): back to the Gatekeeper.
  */
 function PairedApp({ onUnpaired }: { onUnpaired: () => void }) {
   const model = useReadModel()
   const [memberId, setMemberId] = useState<string | null>(() => rememberedMemberId())
+  const [view, setView] = useState<View>({ kind: 'home', justSaved: null })
 
   const unpaired = model.error instanceof ApiError && model.error.status === 401
   useEffect(() => {
     if (unpaired) onUnpaired()
   }, [unpaired, onUnpaired])
+  // Each view starts at the top, like a new page.
+  useEffect(() => {
+    window.scrollTo(0, 0)
+  }, [view.kind])
 
   if (model.isPending) return <Splash label="Loading the Household…" />
-  if (model.isError) return <LoadFailed error={model.error} onRetry={() => void model.refetch()} />
+  // A failed background refetch (after a save) keeps the data on screen.
+  if (model.isError && !model.data) return <LoadFailed error={model.error} onRetry={() => void model.refetch()} />
 
   const { members, ledgerUrl } = model.data
   const current = members.find((m) => m.memberId === memberId)
@@ -81,12 +90,29 @@ function PairedApp({ onUnpaired }: { onUnpaired: () => void }) {
       />
     )
   }
+  if (view.kind === 'quickExpense') {
+    return (
+      <QuickExpense
+        member={current}
+        model={model.data}
+        onSaved={(expense) => setView({ kind: 'home', justSaved: expense })}
+        onCancel={() => setView({ kind: 'home', justSaved: null })}
+        onUnpaired={onUnpaired}
+      />
+    )
+  }
   return (
-    <Home
+    <SimpleMode
       member={current}
+      members={members}
+      categories={model.data.categories}
+      expenses={model.data.expenses}
+      justSaved={view.justSaved}
+      onQuickExpense={() => setView({ kind: 'quickExpense' })}
       onSwitch={() => {
         forgetMember()
         setMemberId(null)
+        setView({ kind: 'home', justSaved: null })
       }}
     />
   )
