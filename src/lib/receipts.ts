@@ -95,7 +95,14 @@ export async function loadReceiptView(fileId: string, driveViewUrl: string, deps
   const thumb = cached?.blob ?? null
   if (cached?.receiptType === PDF) return { kind: 'pdf', thumb, driveUrl: driveViewUrl }
 
-  const res = await (deps.fetchImpl ?? fetch)(receiptUrl(fileId), { credentials: 'same-origin' })
+  let res: Response
+  try {
+    res = await (deps.fetchImpl ?? fetch)(receiptUrl(fileId), { credentials: 'same-origin' })
+  } catch (err) {
+    // Offline (fetch rejects with a TypeError): the cached thumbnail will do.
+    if (thumb && err instanceof TypeError) return { kind: 'offline', thumb }
+    throw err
+  }
   if (res.status === 413) {
     const err = await errorOf(res)
     const link = (err.body as { webViewLink?: unknown }).webViewLink

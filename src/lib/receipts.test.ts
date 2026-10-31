@@ -184,4 +184,37 @@ describe('loadReceiptView', () => {
     expect(view.driveUrl).toBe(fromProxy)
     expect(await bytesOf(view.thumb!)).toEqual(PNG)
   })
+
+  test('offline, a cached thumbnail is shown in place of the photo', async () => {
+    const db = freshDb()
+    const api = fakeReceiptApi({
+      '/api/receipt?id=drive-file-1&thumb=1': { status: 200, body: PNG, type: 'image/png', receiptType: 'image/jpeg' },
+    })
+    await getThumbnail('drive-file-1', { db, fetchImpl: api.fetchImpl })
+    api.goOffline()
+
+    const view = await loadReceiptView('drive-file-1', DRIVE_VIEW, { db, fetchImpl: api.fetchImpl })
+
+    expect(view.kind).toBe('offline')
+    if (view.kind !== 'offline') return
+    expect(await bytesOf(view.thumb)).toEqual(PNG)
+  })
+
+  test('offline with nothing cached rejects with the network error', async () => {
+    const db = freshDb()
+    const api = fakeReceiptApi({})
+    api.goOffline()
+
+    await expect(loadReceiptView('drive-file-9', DRIVE_VIEW, { db, fetchImpl: api.fetchImpl })).rejects.toBeInstanceOf(TypeError)
+  })
+
+  test('a Receipt the proxy does not know rejects with its 404', async () => {
+    const db = freshDb()
+    const api = fakeReceiptApi({
+      '/api/receipt?id=gone&thumb=1': { status: 404, json: { code: 'RECEIPT_NOT_FOUND', message: 'No Receipt has that ID' } },
+      '/api/receipt?id=gone': { status: 404, json: { code: 'RECEIPT_NOT_FOUND', message: 'No Receipt has that ID' } },
+    })
+
+    await expect(loadReceiptView('gone', DRIVE_VIEW, { db, fetchImpl: api.fetchImpl })).rejects.toMatchObject({ status: 404, code: 'RECEIPT_NOT_FOUND' })
+  })
 })
