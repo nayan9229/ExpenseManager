@@ -1,10 +1,14 @@
 import { CircleDashed, Mic, RefreshCw, TriangleAlert } from 'lucide-react'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Button } from './components/Button'
 import type { VoiceResult } from './components/VoiceEntry'
 import { ApiError, getSessionState, type Expense } from './lib/api'
 import { forgetMember, rememberMember, rememberedMemberId } from './lib/device'
+import { backgroundTimer, memberAfterAdmin, startingMember } from './lib/adminLock'
+import { monthOf, type Month } from './lib/month'
+import type { ExpenseDraft } from './lib/quickExpense'
 import { useReadModel } from './lib/readModel'
+import { AdminMode } from './screens/AdminMode'
 import { Gatekeeper } from './screens/Gatekeeper'
 import { ProfileSwitcher } from './screens/ProfileSwitcher'
 import { EditExpense } from './screens/EditExpense'
@@ -55,18 +59,27 @@ export default function App() {
 
 type View =
   | { kind: 'home'; justSaved: Expense | null; justDeleted?: Expense | null }
-  | { kind: 'quickExpense'; voice?: VoiceResult }
-  /** Edit or delete one Expense; Admin Mode (ticket 11) opens any Expense here. */
+  /** `prefill` comes from a due Recurring Rule in Admin Mode. */
+  | { kind: 'quickExpense'; voice?: VoiceResult; prefill?: Partial<ExpenseDraft> }
+  /** Edit or delete one Expense; Admin Mode opens any Expense here. */
   | { kind: 'edit'; expense: Expense }
 
 /**
  * A paired device: Bootstrap once, load the read model, then either the
  * remembered Member's Simple Mode or the profile switcher. A 401 means the
  * Session is gone (secret rotated): back to the Gatekeeper.
+ *
+ * An Admin who passes the PIN gets Admin Mode for as long as the app stays
+ * open, and is never remembered: a reload, Switch Member, or five minutes
+ * in the background asks for the PIN again (ADR-0002). The last non-Admin
+ * Member is kept in memory so the lock returns the device to them.
  */
 function PairedApp({ onUnpaired }: { onUnpaired: () => void }) {
   const model = useReadModel()
   const [memberId, setMemberId] = useState<string | null>(() => rememberedMemberId())
+  const [lastNonAdminId, setLastNonAdminId] = useState<string | null>(() => rememberedMemberId())
+  const [adminId, setAdminId] = useState<string | null>(null)
+  const [adminView, setAdminView] = useState<{ month: Month; filter: string | null }>(() => ({ month: monthOf(new Date()), filter: null }))
   const [view, setView] = useState<View>({ kind: 'home', justSaved: null })
 
   const unpaired = model.error instanceof ApiError && model.error.status === 401
@@ -78,23 +91,61 @@ function PairedApp({ onUnpaired }: { onUnpaired: () => void }) {
     window.scrollTo(0, 0)
   }, [view.kind])
 
+  // Five minutes in the background closes Admin Mode (user story 12).
+  const members = model.data?.members
+  const membersRef = useRef(members)
+  membersRef.current = members
+  useEffect(() => {
+    if (adminId === null) return
+    const timer = backgroundTimer()
+    const onVisibility = () => {
+      if (document.visibilityState === 'hidden') {
+        timer.hidden(Date.now())
+      } else if (timer.visible(Date.now())) {
+        const back = memberAfterAdmin(membersRef.current ?? [], lastNonAdminId)
+        setAdminId(null)
+        setMemberId(back?.memberId ?? null)
+        if (back) rememberMember(back.memberId)
+        setView({ kind: 'home', justSaved: null })
+      }
+    }
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => document.removeEventListener('visibilitychange', onVisibility)
+  }, [adminId, lastNonAdminId])
+
   if (model.isPending) return <Splash label="Loading the Household…" />
   // A failed background refetch (after a save) keeps the data on screen.
   if (model.isError && !model.data) return <LoadFailed error={model.error} onRetry={() => void model.refetch()} />
 
-  const { members, ledgerUrl } = model.data
-  const current = members.find((m) => m.memberId === memberId)
+  const { ledgerUrl } = model.data
+  const admin = model.data.members.find((m) => m.memberId === adminId && m.role === 'admin')
+  const current = admin ?? startingMember(model.data.members, memberId)
   if (!current) {
     return (
       <ProfileSwitcher
-        members={members}
+        members={model.data.members}
         ledgerUrl={ledgerUrl}
         onSelect={(member) => {
+          setView({ kind: 'home', justSaved: null })
+          if (member.role === 'admin') {
+            // PIN typed: Admin Mode until the app closes or locks. Not remembered.
+            setAdminId(member.memberId)
+            setAdminView({ month: monthOf(new Date()), filter: null })
+            return
+          }
           rememberMember(member.memberId)
           setMemberId(member.memberId)
+          setLastNonAdminId(member.memberId)
         }}
       />
     )
+  }
+  const home = (done: Partial<Extract<View, { kind: 'home' }>> = {}) => setView({ kind: 'home', justSaved: null, ...done })
+  const switchMember = () => {
+    forgetMember()
+    setAdminId(null)
+    setMemberId(null)
+    home()
   }
   if (view.kind === 'edit') {
     return (
@@ -102,9 +153,9 @@ function PairedApp({ onUnpaired }: { onUnpaired: () => void }) {
         member={current}
         model={model.data}
         expense={view.expense}
-        onSaved={(expense) => setView({ kind: 'home', justSaved: expense })}
-        onDeleted={(expense) => setView({ kind: 'home', justSaved: null, justDeleted: expense })}
-        onCancel={() => setView({ kind: 'home', justSaved: null })}
+        onSaved={(expense) => home({ justSaved: expense })}
+        onDeleted={(expense) => home({ justDeleted: expense })}
+        onCancel={() => home()}
         onUnpaired={onUnpaired}
       />
     )
@@ -114,10 +165,28 @@ function PairedApp({ onUnpaired }: { onUnpaired: () => void }) {
       <QuickExpense
         member={current}
         model={model.data}
-        prefill={view.voice?.kind === 'heard' ? view.voice.prefill : undefined}
+        prefill={view.prefill ?? (view.voice?.kind === 'heard' ? view.voice.prefill : undefined)}
         notice={view.voice && <VoiceNotice result={view.voice} />}
-        onSaved={(expense) => setView({ kind: 'home', justSaved: expense })}
-        onCancel={() => setView({ kind: 'home', justSaved: null })}
+        onSaved={(expense) => home({ justSaved: expense })}
+        onCancel={() => home()}
+        onUnpaired={onUnpaired}
+      />
+    )
+  }
+  if (current.role === 'admin') {
+    return (
+      <AdminMode
+        member={current}
+        model={model.data}
+        month={adminView.month}
+        onMonth={(month) => setAdminView((v) => ({ ...v, month }))}
+        filter={adminView.filter}
+        onFilter={(filter) => setAdminView((v) => ({ ...v, filter }))}
+        justSaved={view.justSaved}
+        justDeleted={view.justDeleted ?? null}
+        onQuickExpense={(prefill) => setView({ kind: 'quickExpense', prefill })}
+        onEdit={(expense) => setView({ kind: 'edit', expense })}
+        onSwitch={switchMember}
         onUnpaired={onUnpaired}
       />
     )
@@ -125,7 +194,7 @@ function PairedApp({ onUnpaired }: { onUnpaired: () => void }) {
   return (
     <SimpleMode
       member={current}
-      members={members}
+      members={model.data.members}
       categories={model.data.categories}
       expenses={model.data.expenses}
       justSaved={view.justSaved}
@@ -133,11 +202,7 @@ function PairedApp({ onUnpaired }: { onUnpaired: () => void }) {
       onQuickExpense={() => setView({ kind: 'quickExpense' })}
       onVoice={(voice) => setView({ kind: 'quickExpense', voice })}
       onEdit={(expense) => setView({ kind: 'edit', expense })}
-      onSwitch={() => {
-        forgetMember()
-        setMemberId(null)
-        setView({ kind: 'home', justSaved: null })
-      }}
+      onSwitch={switchMember}
     />
   )
 }
