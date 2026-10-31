@@ -1,17 +1,15 @@
-// Package expenses implements the `expenses` function: the read model every
-// device loads after pairing (spec "Expense API contract", Read). Members
-// arrive with a `pinHash` and never the PIN (ADR-0002): the client verifies
-// a typed PIN against SHA-256("<memberId>:<pin>") offline.
+// Package expenses implements the `expenses` function (spec "Expense API
+// contract"): GET is the read model every device loads after pairing, POST
+// creates an Expense. Members arrive with a `pinHash` and never the PIN
+// (ADR-0002): the client verifies a typed PIN against
+// SHA-256("<memberId>:<pin>") offline.
 //
-// GET is all this ticket needs. Create, Update and Delete (POST, PUT,
-// DELETE on the same path) arrive with ticket 04, as does reading the
-// Expenses tab for the date window; until then `expenses` is always empty.
+// Update and Delete (PUT, DELETE on the same path) arrive with ticket 05.
 package expenses
 
 import (
 	"crypto/sha256"
 	"encoding/hex"
-	"errors"
 	"net/http"
 	"time"
 
@@ -24,6 +22,15 @@ import (
 // Service is the function with its Ledger injected.
 type Service struct {
 	Ledger ledger.Ledger
+	// Now is the server clock; nil means time.Now. Tests pin it.
+	Now func() time.Time
+}
+
+func (s Service) now() time.Time {
+	if s.Now == nil {
+		return time.Now()
+	}
+	return s.Now()
 }
 
 // Member is a Members row as the client sees it.
@@ -57,9 +64,9 @@ type RecurringRule struct {
 
 // ReadModel is the GET response.
 type ReadModel struct {
-	// Expenses is empty until ticket 04 reads the date window; the typed
-	// Expense view replaces `any` then.
-	Expenses       []any           `json:"expenses"`
+	// Expenses are the active Expenses in the window, newest Expense_Date
+	// first (then newest Created_At).
+	Expenses       []Expense       `json:"expenses"`
 	Members        []Member        `json:"members"`
 	Categories     []Category      `json:"categories"`
 	RecurringRules []RecurringRule `json:"recurringRules"`
@@ -89,16 +96,16 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 	})(w, r)
 }
 
-// rejectMethod answers 405 for anything this ticket does not serve and
+// rejectMethod answers 405 for anything this function does not serve and
 // reports whether it did. It runs before the environment is read, so a wrong
-// method is never mistaken for a misconfigured server. Ticket 04 adds POST,
-// PUT and DELETE here and in serve.
+// method is never mistaken for a misconfigured server. Ticket 05 adds PUT
+// and DELETE here and in serve.
 func rejectMethod(w http.ResponseWriter, r *http.Request) bool {
-	if r.Method == http.MethodGet {
+	if r.Method == http.MethodGet || r.Method == http.MethodPost {
 		return false
 	}
-	w.Header().Set("Allow", "GET")
-	httpjson.WriteError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "expenses accepts GET only for now")
+	w.Header().Set("Allow", "GET, POST")
+	httpjson.WriteError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "expenses accepts GET and POST")
 	return true
 }
 
@@ -106,26 +113,35 @@ func (s Service) serve(w http.ResponseWriter, r *http.Request) {
 	if rejectMethod(w, r) {
 		return
 	}
+	if r.Method == http.MethodPost {
+		s.create(w, r)
+		return
+	}
 	s.read(w, r)
 }
 
 func (s Service) read(w http.ResponseWriter, r *http.Request) {
-	snap, err := s.Ledger.Read(r.Context(), ledger.Members, ledger.Categories, ledger.RecurringRules)
+	now := s.now()
+	from, to, err := window(r.URL.Query().Get("from"), r.URL.Query().Get("to"), now)
 	if err != nil {
-		if errors.Is(err, ledger.ErrNotFound) {
-			httpjson.WriteError(w, http.StatusNotFound, "LEDGER_NOT_FOUND", "The Ledger is missing; run Bootstrap")
-			return
-		}
-		httpjson.WriteError(w, http.StatusBadGateway, "GOOGLE_ERROR", err.Error())
+		httpjson.WriteError(w, http.StatusBadRequest, "BAD_REQUEST", err.Error())
+		return
+	}
+	snap, err := s.Ledger.Read(r.Context(), ledger.Expenses, ledger.Members, ledger.Categories, ledger.RecurringRules)
+	if err != nil {
+		writeLedgerError(w, err)
 		return
 	}
 	model := ReadModel{
-		Expenses:       []any{},
+		Expenses:       []Expense{},
 		Members:        []Member{},
 		Categories:     []Category{},
 		RecurringRules: []RecurringRule{},
 		LedgerURL:      snap.URL,
-		ServerTime:     time.Now().In(ledger.IST).Format(time.RFC3339),
+		ServerTime:     now.In(ledger.IST).Format(time.RFC3339),
+	}
+	for _, e := range inWindow(ledger.ParseExpenses(snap.Rows[ledger.Expenses]), from, to) {
+		model.Expenses = append(model.Expenses, viewOf(e))
 	}
 	for _, m := range ledger.ParseMembers(snap.Rows[ledger.Members]) {
 		model.Members = append(model.Members, Member{

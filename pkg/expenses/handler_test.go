@@ -27,6 +27,9 @@ const (
 	rameshPinHash = "bb9df8aff41c19732740d6e1d7203895194632fbf5c1feb4a21b2c8def202234"
 )
 
+// fixedNow is the server clock in the fixture: 31 Oct 2026, 09:15 IST.
+var fixedNow = time.Date(2026, 10, 31, 9, 15, 0, 0, ledger.IST)
+
 type fixture struct {
 	ledger *ledger.Fake
 	srv    *httptest.Server
@@ -51,7 +54,7 @@ func newFixture(t *testing.T) fixture {
 		[]string{"rent", "Rent", "25000", "Household & Help", "1"},
 	)
 	f.ledger.Seed(ledger.Expenses)
-	svc := expenses.Service{Ledger: f.ledger}
+	svc := expenses.Service{Ledger: f.ledger, Now: func() time.Time { return fixedNow }}
 	f.srv = httptest.NewServer(svc.Handler())
 	t.Cleanup(f.srv.Close)
 	return f
@@ -166,16 +169,8 @@ func TestTheLedgerURLServerTimeAndEmptyExpensesAreReturned(t *testing.T) {
 	if !strings.Contains(raw, `"expenses":[]`) {
 		t.Errorf("expenses should be an empty array, not null or missing: %s", raw)
 	}
-	serverTime, _ := body["serverTime"].(string)
-	parsed, err := time.Parse(time.RFC3339, serverTime)
-	if err != nil {
-		t.Fatalf("serverTime = %q is not RFC 3339: %v", serverTime, err)
-	}
-	if !strings.HasSuffix(serverTime, "+05:30") {
-		t.Errorf("serverTime = %q, want an IST offset", serverTime)
-	}
-	if d := time.Since(parsed); d < 0 || d > time.Minute {
-		t.Errorf("serverTime = %q is %v away from now", serverTime, d)
+	if body["serverTime"] != "2026-10-31T09:15:00+05:30" {
+		t.Errorf("serverTime = %v, want the server clock in RFC 3339 with the IST offset", body["serverTime"])
 	}
 }
 
@@ -233,10 +228,10 @@ func TestNeedsASession(t *testing.T) {
 	}
 }
 
-func TestWritesArriveWithTheNextTicket(t *testing.T) {
+func TestEditsAndDeletesArriveWithTheNextTicket(t *testing.T) {
 	f := newFixture(t)
 
-	status, raw := call(t, f.srv, http.MethodPost, pairedCookie(t))
+	status, raw := call(t, f.srv, http.MethodPut, pairedCookie(t))
 
 	if status != http.StatusMethodNotAllowed || !strings.Contains(raw, "METHOD_NOT_ALLOWED") {
 		t.Fatalf("status = %d body = %s, want 405 METHOD_NOT_ALLOWED", status, raw)
