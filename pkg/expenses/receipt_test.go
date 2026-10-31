@@ -289,3 +289,89 @@ func TestADriveFailureDuringTheRenameAppendsNothing(t *testing.T) {
 		t.Errorf("appended %q although the Receipt was not renamed", rows)
 	}
 }
+
+// fuelBill is an Expense already in the Ledger for a petrol pump bill
+// whose Receipt Number is "INV 4521".
+func fuelBill(status ledger.Status) ledger.Expense {
+	return ledger.Expense{
+		ID: "0b5c8f9e-3333-4c2a-9d55-0b9e1c3f7a10", CreatedAt: "2026-10-29T19:00:00+05:30", UpdatedAt: "2026-10-29T19:00:00+05:30",
+		ExpenseDate: "2026-10-29", LoggedBy: "admin", PaidBy: "admin", Amount: 450, Currency: "INR",
+		Category: "Medical & Pharmacy", MerchantNote: "HP pump", PaymentMethod: ledger.UPI,
+		DriveFileID: "file-earlier", DriveViewURL: "https://drive.google.com/file/d/file-earlier/view",
+		FileHash:      "1111111111111111111111111111111111111111111111111111111111111111",
+		Reimbursement: ledger.ReimbursementNone, Status: status, ReceiptNumber: "INV 4521",
+	}
+}
+
+func TestTheSameReceiptNumberAndAmountIsADuplicateUnlessForced(t *testing.T) {
+	f := newFixture(t)
+	existing := fuelBill(ledger.StatusActive)
+	f.ledger.Seed(ledger.Expenses, existing.Row())
+	fileID := uploaded(t, f, "2026-10-30")
+	req := withReceipt(fileID) // a different photo of the same bill: another hash
+	req["receiptNumber"] = " inv4521 "
+
+	status, body, raw := post(t, f, req)
+
+	if status != http.StatusConflict || body["code"] != "DUPLICATE_RECEIPT" {
+		t.Fatalf("status = %d body = %s, want 409 DUPLICATE_RECEIPT", status, raw)
+	}
+	dup, _ := body["expense"].(map[string]any)
+	if dup["id"] != existing.ID || dup["receiptNumber"] != "INV 4521" {
+		t.Errorf("expense = %v, want the Expense with that Receipt Number", body["expense"])
+	}
+	if msg, _ := body["message"].(string); msg != "This receipt was already added on 2026-10-29 for ₹450" {
+		t.Errorf("message = %q, want the existing sentence", msg)
+	}
+	if rows := f.ledger.Tab(ledger.Expenses).Rows; len(rows) != 1 {
+		t.Errorf("appended on a duplicate: %q", rows)
+	}
+	if got := f.store.FileByID(fileID).Name; got != newID+".jpg" {
+		t.Errorf("the duplicate upload was renamed to %q before the user chose", got)
+	}
+
+	req["force"] = true
+	if status, _, raw := post(t, f, req); status != http.StatusCreated {
+		t.Fatalf("forced: status = %d body = %s, want 201", status, raw)
+	}
+}
+
+func TestAReceiptNumberDuplicateNeedsAnActiveExpenseWithTheSameAmount(t *testing.T) {
+	cases := map[string]struct {
+		existing ledger.Expense
+		number   string
+		amount   float64
+	}{
+		"another amount":            {fuelBill(ledger.StatusActive), "INV 4521", 451},
+		"another Receipt Number":    {fuelBill(ledger.StatusActive), "INV 4522", 450},
+		"a deleted Expense":         {fuelBill(ledger.StatusDeleted), "INV 4521", 450},
+		"no Receipt Number sent":    {fuelBill(ledger.StatusActive), "", 450},
+		"neither has a Receipt No.": {func() ledger.Expense { e := fuelBill(ledger.StatusActive); e.ReceiptNumber = ""; return e }(), "  ", 450},
+	}
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			f := newFixture(t)
+			f.ledger.Seed(ledger.Expenses, c.existing.Row())
+			req := validCreate()
+			req["receiptNumber"] = c.number
+			req["amount"] = c.amount
+
+			if status, _, raw := post(t, f, req); status != http.StatusCreated {
+				t.Fatalf("status = %d body = %s, want 201", status, raw)
+			}
+		})
+	}
+}
+
+func TestAReceiptNumberDuplicateIsFoundWithoutAReceiptFileToo(t *testing.T) {
+	f := newFixture(t)
+	f.ledger.Seed(ledger.Expenses, fuelBill(ledger.StatusActive).Row())
+	req := validCreate()
+	req["receiptNumber"] = "INV 4521"
+
+	status, body, raw := post(t, f, req)
+
+	if status != http.StatusConflict || body["code"] != "DUPLICATE_RECEIPT" {
+		t.Fatalf("status = %d body = %s, want 409 DUPLICATE_RECEIPT", status, raw)
+	}
+}

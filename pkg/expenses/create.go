@@ -159,6 +159,8 @@ func (s Service) create(w http.ResponseWriter, r *http.Request) {
 		if !s.attachReceipt(w, r, req, snap.Rows[ledger.Expenses], &expense) {
 			return
 		}
+	} else if !req.Force && writeDuplicate(w, snap.Rows[ledger.Expenses], "", expense) {
+		return
 	}
 	if err := s.Ledger.Append(r.Context(), ledger.Expenses, [][]string{expense.Row()}); err != nil {
 		writeLedgerError(w, err)
