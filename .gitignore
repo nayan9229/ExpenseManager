@@ -25,3 +25,9 @@ coverage/
 # Logs and OS files
 *.log
 .DS_Store
+
+.agents
+.claude
+skills-lock.json
+docs
+.scratch
