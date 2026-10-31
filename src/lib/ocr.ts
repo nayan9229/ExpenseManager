@@ -56,7 +56,9 @@ const sameName = (a: string, b: string) => a.replace(/\s+/g, ' ').trim().toLower
  * draft: the Member's Payment Method, today, "own pocket" off). `categories`
  * are the ones this Member can pick. A value that cannot be used (missing,
  * a Category not on the grid, a date after tomorrow, no amount) keeps the
- * base value and is highlighted, like a low-confidence one.
+ * base value and is highlighted, like a low-confidence one. The Receipt
+ * No. is the exception: left blank when there is none, and highlighted only
+ * when the model read one it was unsure of.
  */
 export function prefillFromOcr(result: OcrResult, base: ExpenseDraft, categories: Category[], today: string): { draft: ExpenseDraft; highlight: Highlight } {
   const draft: ExpenseDraft = { ...base }
@@ -91,7 +93,8 @@ export function prefillFromOcr(result: OcrResult, base: ExpenseDraft, categories
   // `?? null`: an answer from a server that predates the Receipt Number.
   const receiptNumber = (result.receiptNumber ?? '').trim().slice(0, MAX_RECEIPT_NUMBER)
   draft.receiptNumber = receiptNumber
-  if (!receiptNumber || unsure(result.confidence.receiptNumber)) highlight.receiptNumber = true
+  // Many Receipts print no number, so a blank one is not a doubt: only a reading the model was unsure of is highlighted.
+  if (receiptNumber && unsure(result.confidence.receiptNumber)) highlight.receiptNumber = true
 
   return { draft, highlight }
 }

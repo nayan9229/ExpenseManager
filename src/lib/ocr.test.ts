@@ -86,7 +86,7 @@ describe('prefillFromOcr', () => {
     })
 
     expect(draft).toEqual({ ...base, category: 'Other', receiptNumber: '' })
-    expect(highlight).toEqual({ amount: true, category: true, expenseDate: true, paymentMethod: true, note: true, receiptNumber: true })
+    expect(highlight).toEqual({ amount: true, category: true, expenseDate: true, paymentMethod: true, note: true })
   })
 
   test('a missing Payment Method keeps the Member default, highlighted even when the model was sure', () => {
@@ -122,12 +122,21 @@ describe('prefillFromOcr', () => {
     expect(prefill({ ...pharmacyBill, receiptNumber: '9'.repeat(50) }).draft.receiptNumber).toHaveLength(40)
   })
 
-  test('an answer from a server that predates the Receipt No. leaves it blank and highlighted', () => {
+  test('a Receipt with no Receipt No. leaves the field blank and not highlighted: many Receipts have none', () => {
+    for (const receiptNumber of [null, '', '   ']) {
+      const { draft, highlight } = prefill({ ...pharmacyBill, receiptNumber, confidence: { ...pharmacyBill.confidence, receiptNumber: 0 } })
+
+      expect(draft.receiptNumber).toBe('')
+      expect(highlight).toEqual({})
+    }
+  })
+
+  test('an answer from a server that predates the Receipt No. leaves it blank and not highlighted', () => {
     const { receiptNumber: _, ...older } = pharmacyBill
     const { draft, highlight } = prefill({ ...older, confidence: { ...pharmacyBill.confidence, receiptNumber: undefined } } as unknown as OcrResult)
 
     expect(draft.receiptNumber).toBe('')
-    expect(highlight).toEqual({ receiptNumber: true })
+    expect(highlight).toEqual({})
   })
 
   test('the Category is matched ignoring case and spaces, in the Ledger spelling', () => {
