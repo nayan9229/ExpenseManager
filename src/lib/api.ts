@@ -51,3 +51,20 @@ export async function getSessionState(fetchImpl: typeof fetch = fetch): Promise<
   const body = await readJson<{ paired?: unknown }>(res)
   return { paired: body.paired === true }
 }
+
+/**
+ * Pairs this device with the Household by sending the Access Code to the
+ * `auth` function. A wrong code rejects with an ApiError whose `code` is
+ * `WRONG_ACCESS_CODE` (after the server's deliberate delay). On success the
+ * server has set the httpOnly Session cookie; nothing is stored client-side.
+ */
+export async function pairDevice(accessCode: string, fetchImpl: typeof fetch = fetch): Promise<SessionState> {
+  const res = await fetchImpl('/api/auth', {
+    method: 'POST',
+    headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+    credentials: 'same-origin',
+    body: JSON.stringify({ accessCode }),
+  })
+  const body = await readJson<{ paired?: unknown }>(res)
+  return { paired: body.paired === true }
+}
