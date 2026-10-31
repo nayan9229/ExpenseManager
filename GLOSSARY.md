@@ -69,6 +69,10 @@ _Avoid_: subscription, scheduled expense
 The image or PDF attached to an Expense as proof.
 _Avoid_: bill, invoice, attachment, scan (as a noun)
 
+**Receipt Number**:
+The number the merchant prints on a Receipt to identify it.
+_Avoid_: bill number, invoice number, SR number, serial number
+
 **Receipt Store**:
 The `Receipts/YYYY/MM-Month` folder tree in Google Drive.
 
