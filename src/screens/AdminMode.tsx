@@ -344,21 +344,24 @@ function BurnRatePanel({ burn, who }: { burn: ReturnType<typeof burnRates>; who:
 
       <h3 className="text-lg font-semibold">Burn Rate by Category</h3>
       <ul className="flex flex-col gap-4">
-        {burn.categories.map((c) => (
-          <li key={c.name} className="flex flex-col gap-2">
-            <p className="flex items-center justify-between gap-3 text-lg">
-              <span className="flex min-w-0 items-center gap-2">
+        {burn.categories
+          // A Category with no Budget and nothing spent has nothing to show.
+          .filter((c) => c.fraction !== null || c.count > 0)
+          .map((c) => (
+            <li key={c.name} className="flex flex-col gap-2">
+              <p className="flex items-center gap-2 text-lg font-semibold">
                 <span aria-hidden="true" className="text-2xl">
                   {c.emoji}
                 </span>
-                <span className="truncate font-semibold">{c.name}</span>
-              </span>
-              <OverLine bar={c} />
-            </p>
-            <BudgetBar bar={c} />
-            <p className="text-lg tabular-nums">{barWords(c)}</p>
-          </li>
-        ))}
+                {c.name}
+              </p>
+              <BudgetBar bar={c} />
+              <p className="flex flex-wrap items-baseline justify-between gap-x-3 text-lg tabular-nums">
+                <span>{barWords(c)}</span>
+                <OverLine bar={c} />
+              </p>
+            </li>
+          ))}
       </ul>
     </Panel>
   )
@@ -378,7 +381,7 @@ function BreakdownPanel({ burn, who }: { burn: ReturnType<typeof burnRates>; who
                 {r.emoji}
               </span>
               <span className="flex min-w-0 flex-1 flex-col">
-                <span className="truncate text-lg font-semibold">{r.name}</span>
+                <span className="text-lg font-semibold">{r.name}</span>
                 <span className="text-base">
                   {r.count} {r.count === 1 ? 'Expense' : 'Expenses'} · {Math.round(r.share * 100)}%
                 </span>
@@ -430,13 +433,11 @@ function DuePanel({
                 }
               >
                 <span className="flex min-w-0 flex-1 flex-col">
-                  <span className="flex items-baseline justify-between gap-3">
-                    <span className="truncate text-lg font-bold">{rule.title}</span>
-                    <span className="text-lg font-bold tabular-nums">{formatRupees(rule.amount)}</span>
+                  <span className="text-lg font-bold">{rule.title}</span>
+                  <span className="text-lg tabular-nums">
+                    {formatRupees(rule.amount)} · {rule.category}
                   </span>
-                  <span className="text-base">
-                    {rule.category} · due {dayLabel(dueDate, today)}
-                  </span>
+                  <span className="text-base">Due {dayLabel(dueDate, today)}</span>
                 </span>
                 <span className="flex shrink-0 items-center gap-1 text-lg font-semibold">
                   <Keyboard aria-hidden="true" className="size-6" />
@@ -528,12 +529,25 @@ function QueuePanel({
   )
 }
 
-function ExpenseSummary({ expense, members, categories, today }: { expense: Expense; members: Member[]; categories: Category[]; today: string }) {
+function ExpenseSummary({
+  expense,
+  members,
+  categories,
+  today,
+  onSand = false,
+}: {
+  expense: Expense
+  members: Member[]
+  categories: Category[]
+  today: string
+  /** The row is Sand, so the emoji sits on Warm White. */
+  onSand?: boolean
+}) {
   const name = (id: string) => members.find((m) => m.memberId === id)?.name ?? 'Unknown'
   const emoji = categories.find((c) => categoryKey(c.name) === categoryKey(expense.category))?.emoji ?? '📦'
   return (
     <div className="flex min-w-0 flex-1 items-center gap-3">
-      <span role="img" aria-label={expense.category} className="flex size-12 shrink-0 items-center justify-center rounded-full bg-sand text-2xl">
+      <span role="img" aria-label={expense.category} className={'flex size-12 shrink-0 items-center justify-center rounded-full text-2xl ' + (onSand ? 'bg-warm-white' : 'bg-sand')}>
         {emoji}
       </span>
       <span className="flex min-w-0 flex-1 flex-col">
@@ -588,7 +602,7 @@ function MonthExpenses({
                   'outline-none focus-visible:ring-4 focus-visible:ring-olive-sage active:scale-[0.98] transition-transform'
                 }
               >
-                <ExpenseSummary expense={e} members={members} categories={categories} today={today} />
+                <ExpenseSummary expense={e} members={members} categories={categories} today={today} onSand />
                 <Pencil aria-hidden="true" className="size-7 shrink-0" />
               </button>
             </li>
