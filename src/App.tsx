@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Button } from './components/Button'
 import type { VoiceResult } from './components/VoiceEntry'
 import { ApiError, getSessionState, type Expense } from './lib/api'
+import { setBusy } from './lib/appUpdate'
 import { forgetMember, rememberMember, rememberedMemberId } from './lib/device'
 import { takePairToken } from './lib/installPrompt'
 import { backgroundTimer, memberAfterAdmin, startingMember } from './lib/adminLock'
@@ -109,6 +110,11 @@ function PairedApp({ onUnpaired }: { onUnpaired: () => void }) {
   useEffect(() => {
     window.scrollTo(0, 0)
   }, [view.kind])
+  // A new version never reloads the app over a form or the pairing modal.
+  useEffect(() => {
+    setBusy(view.kind !== 'home' || pairOpen)
+    return () => setBusy(false)
+  }, [view.kind, pairOpen])
 
   // Five minutes in the background closes Admin Mode (user story 12).
   const members = model.data?.members

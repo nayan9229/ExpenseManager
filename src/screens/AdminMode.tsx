@@ -19,6 +19,7 @@ import {
 } from 'lucide-react'
 import { useEffect, useState, type ReactNode } from 'react'
 import { Button } from '../components/Button'
+import { UpdateBanner } from '../components/UpdateBanner'
 import { ApiError, runBootstrap, type Category, type Expense, type Member, type ReadModel } from '../lib/api'
 import { markPaidBack, useMonthModel } from '../lib/adminData'
 import {
@@ -94,6 +95,7 @@ export function AdminMode(props: Props) {
 
   return (
     <main className="mx-auto flex min-h-dvh max-w-md flex-col gap-8 px-5 py-10">
+      <UpdateBanner />
       <header className="flex flex-col gap-2">
         <p className="text-base font-semibold uppercase tracking-wide text-olive-sage">Admin Mode</p>
         <h1 className="text-3xl font-bold leading-tight">Hello, {member.name}.</h1>

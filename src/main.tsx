@@ -4,11 +4,17 @@ import { createRoot } from 'react-dom/client'
 import { registerSW } from 'virtual:pwa-register'
 import App from './App'
 import './app.css'
+import { checkForUpdates, updateActivated } from './lib/appUpdate'
 import { startOffline } from './lib/offlineStart'
 import { queryClient } from './lib/readModel'
 
-// Precaches the shell and swaps in new versions on the next load.
-registerSW({ immediate: true })
+// Precaches the shell. A new deploy's worker takes over at once and the
+// page reloads at the next safe moment (src/lib/appUpdate.ts).
+registerSW({
+  immediate: true,
+  onNeedReload: updateActivated,
+  onRegisteredSW: (_url, registration) => checkForUpdates(registration),
+})
 
 const root = document.getElementById('root')
 if (!root) throw new Error('index.html is missing #root')

@@ -4,6 +4,13 @@
   resumable session opened by /api/upload-url works cross-origin on the
   deployed URL. Delete this file once the result is recorded in the ticket.
   It never prints the session URL (a bearer secret).
+
+  Not part of a normal build. It must be served from the deployed origin
+  (it uses that origin's Session cookie and Drive checks that Origin), so
+  it is copied into dist/ only when the build runs with
+  INCLUDE_RECEIPT_PROOF=1, e.g. for one Preview:
+    vercel deploy --yes --build-env INCLUDE_RECEIPT_PROOF=1
+  README.md, "The one-time upload proof", has the whole test.
 -->
 <html lang="en">
 <head>

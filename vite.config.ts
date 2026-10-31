@@ -1,18 +1,43 @@
+import { readFileSync } from 'node:fs'
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
+import type { Plugin } from 'vite'
 import { VitePWA } from 'vite-plugin-pwa'
 import { defineConfig } from 'vitest/config'
 
 // Palette token: Warm White. Mirrors --color-warm-white in src/app.css.
 const warmWhite = '#F3EDE1'
 
+/**
+ * Ticket 06's throwaway CORS proof page (scripts/receipt-upload-proof.html)
+ * ships only in a build that asks for it with INCLUDE_RECEIPT_PROOF=1
+ * (README, "The one-time upload proof"); a normal build, Production
+ * included, never serves it.
+ */
+function receiptUploadProof(): Plugin {
+  return {
+    name: 'receipt-upload-proof',
+    apply: 'build',
+    generateBundle() {
+      if (process.env['INCLUDE_RECEIPT_PROOF'] !== '1') return
+      const source = readFileSync(new URL('./scripts/receipt-upload-proof.html', import.meta.url), 'utf8')
+      this.emitFile({ type: 'asset', fileName: 'receipt-upload-proof.html', source })
+    },
+  }
+}
+
 export default defineConfig({
   plugins: [
     react(),
     tailwindcss(),
+    receiptUploadProof(),
     VitePWA({
+      // A new deploy's worker skips waiting and claims open pages at once;
+      // the page reloads at the next safe moment (src/lib/appUpdate.ts).
       registerType: 'autoUpdate',
-      includeAssets: ['apple-touch-icon.png', 'favicon.ico'],
+      // The glob below already precaches every icon; listing them twice
+      // only duplicates precache entries.
+      includeManifestIcons: false,
       manifest: {
         id: '/',
         name: 'Family Expenses',
@@ -32,11 +57,13 @@ export default defineConfig({
         ],
       },
       workbox: {
-        // Precache the app shell: everything Vite emits plus the public icons.
-        globPatterns: ['**/*.{js,css,html,ico,png,svg,webmanifest}'],
+        // Precache the app shell: everything Vite emits plus the public icons
+        // (the plugin adds the manifest itself).
+        globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
         // The HEIC converter (~3 MB, ticket 06) is fetched only when a HEIC
         // file is picked, so it stays out of the precache and is cached on
-        // first use instead (runtime rule below).
+        // first use instead (runtime rule below). The proof page, when a
+        // build includes it, is never precached either.
         globIgnores: ['**/heic-to-*.js', 'receipt-upload-proof.html'],
         // SPA navigations fall back to the shell, but never for API routes.
         navigateFallback: '/index.html',
