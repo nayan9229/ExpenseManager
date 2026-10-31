@@ -1,4 +1,4 @@
-package auth_test
+package pairing_test
 
 import (
 	"encoding/json"
@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/nayan9229/ExpenseManager/pkg/auth"
 	"github.com/nayan9229/ExpenseManager/pkg/paircode"
+	"github.com/nayan9229/ExpenseManager/pkg/pairing"
 	"github.com/nayan9229/ExpenseManager/pkg/session"
 )
 
@@ -19,19 +19,19 @@ const (
 	jwtSecret  = "test-secret-at-least-32-characters-long"
 )
 
-// newServer starts the auth function with a configured Household.
+// newServer starts the pair function with a configured Household.
 func newServer(t *testing.T) *httptest.Server {
 	t.Helper()
 	t.Setenv("FAMILY_ACCESS_CODE", accessCode)
 	t.Setenv("JWT_SECRET", jwtSecret)
-	srv := httptest.NewServer(http.HandlerFunc(auth.Handler))
+	srv := httptest.NewServer(http.HandlerFunc(pairing.Handler))
 	t.Cleanup(srv.Close)
 	return srv
 }
 
 func pair(t *testing.T, srv *httptest.Server, body string) *http.Response {
 	t.Helper()
-	res, err := http.Post(srv.URL+"/api/auth", "application/json", strings.NewReader(body))
+	res, err := http.Post(srv.URL+"/api/pair", "application/json", strings.NewReader(body))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -49,7 +49,7 @@ func decode(t *testing.T, res *http.Response, v any) {
 func TestGetReportsAnUnpairedDevice(t *testing.T) {
 	srv := newServer(t)
 
-	res, err := http.Get(srv.URL + "/api/auth")
+	res, err := http.Get(srv.URL + "/api/pair")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -107,7 +107,7 @@ func TestTheRightAccessCodePairsTheDevice(t *testing.T) {
 func TestUnsupportedMethodIsRejected(t *testing.T) {
 	srv := newServer(t)
 
-	req, _ := http.NewRequest(http.MethodDelete, srv.URL+"/api/auth", nil)
+	req, _ := http.NewRequest(http.MethodDelete, srv.URL+"/api/pair", nil)
 	res, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatal(err)
@@ -167,7 +167,7 @@ func sessionCookie(t *testing.T, srv *httptest.Server) *http.Cookie {
 
 func getWithCookie(t *testing.T, srv *httptest.Server, cookie *http.Cookie) bool {
 	t.Helper()
-	req, _ := http.NewRequest(http.MethodGet, srv.URL+"/api/auth", nil)
+	req, _ := http.NewRequest(http.MethodGet, srv.URL+"/api/pair", nil)
 	if cookie != nil {
 		req.AddCookie(cookie)
 	}
@@ -297,7 +297,7 @@ func TestATypedPairCodePairsTheDevice(t *testing.T) {
 func TestAPairTokenFromTheQRLinkPairsTheDevice(t *testing.T) {
 	srv := newServer(t)
 
-	res, err := http.Post(srv.URL+"/api/auth?pairToken="+currentPairCode(), "application/json", nil)
+	res, err := http.Post(srv.URL+"/api/pair?pairToken="+currentPairCode(), "application/json", nil)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -29,7 +29,7 @@ type Boot =
 const hasKeptReadModel = () => queryClient.getQueryData(readModelKey) !== undefined
 
 /**
- * Boot: ask the `auth` function whether this device holds a Session, then
+ * Boot: ask the `pair` function whether this device holds a Session, then
  * show the Gatekeeper or the paired app. A paired device sees a neutral
  * splash while the answer is on its way and never the Gatekeeper; one with
  * a kept read model opens straight away (offline too) while it is asked.

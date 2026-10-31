@@ -22,7 +22,7 @@ export class ApiError extends Error {
   }
 }
 
-/** What the `auth` GET reports: whether this device holds a valid Session. */
+/** What the `pair` GET reports: whether this device holds a valid Session. */
 export type SessionState = {
   paired: boolean
 }
@@ -45,9 +45,9 @@ export async function readJson<T>(res: Response): Promise<T> {
   )
 }
 
-/** Asks the `auth` function whether this device is paired. */
+/** Asks the `pair` function whether this device is paired. */
 export async function getSessionState(fetchImpl: typeof fetch = fetch): Promise<SessionState> {
-  const res = await fetchImpl('/api/auth', {
+  const res = await fetchImpl('/api/pair', {
     method: 'GET',
     headers: { Accept: 'application/json' },
     credentials: 'same-origin',
@@ -58,12 +58,12 @@ export async function getSessionState(fetchImpl: typeof fetch = fetch): Promise<
 
 /**
  * Pairs this device with the Household by sending the Access Code to the
- * `auth` function. A wrong code rejects with an ApiError whose `code` is
+ * `pair` function. A wrong code rejects with an ApiError whose `code` is
  * `WRONG_ACCESS_CODE` (after the server's deliberate delay). On success the
  * server has set the httpOnly Session cookie; nothing is stored client-side.
  */
 export async function pairDevice(accessCode: string, fetchImpl: typeof fetch = fetch): Promise<SessionState> {
-  const res = await fetchImpl('/api/auth', {
+  const res = await fetchImpl('/api/pair', {
     method: 'POST',
     headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
     credentials: 'same-origin',
@@ -79,7 +79,7 @@ export async function pairDevice(accessCode: string, fetchImpl: typeof fetch = f
  * stale or wrong code rejects with `WRONG_PAIR_CODE` after the delay.
  */
 export async function pairWithCode(pairCode: string, fetchImpl: typeof fetch = fetch): Promise<SessionState> {
-  const res = await fetchImpl('/api/auth', {
+  const res = await fetchImpl('/api/pair', {
     method: 'POST',
     headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
     credentials: 'same-origin',

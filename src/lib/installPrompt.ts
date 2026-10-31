@@ -3,7 +3,7 @@
  * `pairing.ts` and tested there). Imported by the Gatekeeper, so these
  * listeners are registered while the module graph loads, before React
  * renders: Chrome fires `beforeinstallprompt` early, often while the boot
- * check is still waiting for `auth`.
+ * check is still waiting for `pair`.
  */
 import { useSyncExternalStore } from 'react'
 import { installPlatform, pairTokenFromUrl, type InstallPlatform } from './pairing'

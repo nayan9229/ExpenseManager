@@ -1,11 +1,11 @@
-// Package auth implements the `auth` function: Pairing a device and reporting
+// Package pairing implements the `pair` function: Pairing a device and reporting
 // whether the device already holds a Session (GLOSSARY: Pairing, Access Code,
 // Session; ADR-0002).
 //
 // GET answers `{ "paired": bool }` from the cookie alone. POST takes the
 // Household Access Code, a typed Pair Code, or a Pair Token from a QR link
 // and, when it matches, issues the year-long Session.
-package auth
+package pairing
 
 import (
 	"crypto/sha256"
@@ -42,7 +42,7 @@ const failedAttemptDelay = 500 * time.Millisecond
 
 var errNoAccessCode = errors.New("FAMILY_ACCESS_CODE must be set to at least 10 characters")
 
-// Handler routes the `auth` function by method.
+// Handler routes the `pair` function by method.
 func Handler(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
@@ -51,7 +51,7 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 		pair(w, r)
 	default:
 		w.Header().Set("Allow", "GET, POST")
-		httpjson.WriteError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "auth accepts GET and POST only")
+		httpjson.WriteError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "pair accepts GET and POST only")
 	}
 }
 

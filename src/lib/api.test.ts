@@ -3,11 +3,11 @@ import { ApiError, createExpense, getReadModel, getSessionState, pairDevice, run
 
 type Seen = { method: string; body: string | null; contentType: string | null }
 
-/** A fake `fetch` for /api/auth that records the one request it receives. */
+/** A fake `fetch` for /api/pair that records the one request it receives. */
 function fakeAuth(status: number, body: unknown, seen: Seen[] = []): typeof fetch {
   return async (input, init) => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
-    if (!url.endsWith('/api/auth')) throw new Error(`unexpected request to ${url}`)
+    if (!url.endsWith('/api/pair')) throw new Error(`unexpected request to ${url}`)
     const headers = new Headers(init?.headers)
     seen.push({
       method: init?.method ?? 'GET',
@@ -22,12 +22,12 @@ function fakeAuth(status: number, body: unknown, seen: Seen[] = []): typeof fetc
 }
 
 describe('getSessionState', () => {
-  test('reports an unpaired device from the auth GET', async () => {
+  test('reports an unpaired device from the pair GET', async () => {
     const state = await getSessionState(fakeAuth(200, { paired: false }))
     expect(state).toEqual({ paired: false })
   })
 
-  test('reports a paired device from the auth GET', async () => {
+  test('reports a paired device from the pair GET', async () => {
     const state = await getSessionState(fakeAuth(200, { paired: true }))
     expect(state).toEqual({ paired: true })
   })

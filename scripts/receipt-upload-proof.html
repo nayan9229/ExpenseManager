@@ -36,7 +36,7 @@
 <script>
 const log = (line, cls) => { const s = document.createElement('div'); s.textContent = line; if (cls) s.className = cls; document.getElementById('log').append(s) }
 document.getElementById('pair').onclick = async () => {
-  const res = await fetch('/api/auth', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin', body: JSON.stringify({ accessCode: document.getElementById('code').value }) })
+  const res = await fetch('/api/pair', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin', body: JSON.stringify({ accessCode: document.getElementById('code').value }) })
   log(`pair: ${res.status} ${await res.text()}`, res.ok ? 'ok' : 'bad')
 }
 async function sampleJpeg() {

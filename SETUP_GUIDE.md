@@ -102,7 +102,7 @@ This guide walks through connecting your **Expense Manager** Google Drive folder
    FAMILY_ACCESS_CODE="choose-a-secret-family-passphrase"
    JWT_SECRET="generate-a-random-32-char-secret-string"
    ```
-2. Run `vercel dev --listen 3000`, open http://localhost:3000 and pair with the Access Code. The first paired device runs Bootstrap by itself: it creates the `Receipts` folder and the `Expenses_Database` Ledger (four tabs, headers, seven Categories and an `admin` Member) inside your folder. There is nothing to run by hand, and running it again changes nothing. To watch it directly: `curl -c jar -X POST -H 'Content-Type: application/json' -d '{"accessCode":"..."}' http://localhost:3000/api/auth && curl -b jar -X POST http://localhost:3000/api/bootstrap`.
+2. Run `vercel dev --listen 3000`, open http://localhost:3000 and pair with the Access Code. The first paired device runs Bootstrap by itself: it creates the `Receipts` folder and the `Expenses_Database` Ledger (four tabs, headers, seven Categories and an `admin` Member) inside your folder. There is nothing to run by hand, and running it again changes nothing. To watch it directly: `curl -c jar -X POST -H 'Content-Type: application/json' -d '{"accessCode":"..."}' http://localhost:3000/api/pair && curl -b jar -X POST http://localhost:3000/api/bootstrap`.
 3. Open the Ledger (the app links to it from the profile switcher) and set the Admin's PIN: Members tab, `PIN_Code` cell of the `admin` row, four digits. Optionally copy the Ledger's ID from its URL into `GOOGLE_SHEET_ID` so the functions skip the folder lookup.
 
 ---

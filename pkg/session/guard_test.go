@@ -11,7 +11,7 @@ import (
 )
 
 // guardedServer wraps a handler that echoes the Session's deviceId, the way
-// every function after `auth` will wrap its own handler.
+// every function after `pair` will wrap its own handler.
 func guardedServer(t *testing.T) *httptest.Server {
 	t.Helper()
 	t.Setenv("JWT_SECRET", string(secret))

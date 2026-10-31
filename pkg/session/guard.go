@@ -9,7 +9,7 @@ import (
 )
 
 // Require wraps a function's handler so it only runs for a paired device.
-// Every function except `auth` wraps itself in it, and it runs before
+// Every function except `pair` wraps itself in it, and it runs before
 // anything else (in particular before any Google call), answering
 // 401 NOT_PAIRED without a valid Session. The verified Claims are put in the
 // request context for FromContext.

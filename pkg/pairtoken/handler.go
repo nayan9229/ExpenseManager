@@ -18,7 +18,7 @@ import (
 
 // Token is the GET response. `url` is the app URL with the code as the
 // `pairToken` query parameter (what the QR encodes); `expiresAt` is the
-// last moment `auth` accepts the code (RFC 3339, UTC).
+// last moment `pair` accepts the code (RFC 3339, UTC).
 type Token struct {
 	PairCode  string `json:"pairCode"`
 	URL       string `json:"url"`

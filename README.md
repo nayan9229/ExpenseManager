@@ -101,7 +101,7 @@ Every variable is read by the Go functions on each request. Set them for
 
 | Variable | Required | What it is |
 |---|---|---|
-| `FAMILY_ACCESS_CODE` | yes | The Household secret typed on a device to pair it. **At least 10 characters** (`auth` refuses to pair with a shorter one); it is the only thing between a stranger and the Ledger. Changing it does not unpair anyone. |
+| `FAMILY_ACCESS_CODE` | yes | The Household secret typed on a device to pair it. **At least 10 characters** (`pair` refuses to pair with a shorter one); it is the only thing between a stranger and the Ledger. Changing it does not unpair anyone. |
 | `JWT_SECRET` | yes | Signs Session cookies and Pair Codes. At least 32 characters (`openssl rand -base64 32`). **Rotating it unpairs every device**, which is how a lost phone is cut off. |
 | `GOOGLE_CLIENT_ID` | yes | The OAuth client ID (`...apps.googleusercontent.com`). |
 | `GOOGLE_CLIENT_SECRET` | yes | The OAuth client secret. |
@@ -134,13 +134,13 @@ a `builds` section.
    `printf '%s' "$VALUE" | vercel env add NAME production` and again with
    `preview`. Check with `vercel env ls`.
    **The current production deployment has no variables at all**, so until
-   this step `/api/auth` there answers `SERVER_MISCONFIGURED` and no phone can
+   this step `/api/pair` there answers `SERVER_MISCONFIGURED` and no phone can
    pair.
 4. Deploy: `vercel deploy --prod`. A variable added later only reaches a new
    deployment, so redeploy after every change. (Connecting the GitHub
    repository in the Vercel dashboard makes every push to `master` a
    production deploy and every other branch a preview.)
-5. Check it: open `https://<your-project>.vercel.app/api/auth`; it must answer
+5. Check it: open `https://<your-project>.vercel.app/api/pair`; it must answer
    `{"paired":false}`.
 
 Preview URLs (`<project>-<hash>-<team>.vercel.app`) sit behind Vercel
@@ -347,7 +347,7 @@ the app right after a deploy is asked for the PIN again.)
 
 ## Repository layout
 
-- `api/` one file per Vercel function (`auth`, `pair-token`, `bootstrap`,
+- `api/` one file per Vercel function (`pair`, `pair-token`, `bootstrap`,
   `expenses`, `upload-url`, `ocr`, `receipt`), each a thin wrapper.
 - `pkg/` the Go code and its tests.
 - `src/` the React app; `src/lib/` holds the tested logic.

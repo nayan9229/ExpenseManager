@@ -7,7 +7,7 @@ package handler
 // to "package main", so a leading comment that contains those words breaks
 // the local build.
 //
-// Each file exports one differently named function (Auth, Bootstrap, ...):
+// Each file exports one differently named function (Pair, Bootstrap, ...):
 // the builder picks the first exported func with the http.HandlerFunc shape
 // whatever it is called, and `go vet ./...` compiles api/ as one package, so
 // two files could not both export `Handler`.
@@ -15,10 +15,10 @@ package handler
 import (
 	"net/http"
 
-	"github.com/nayan9229/ExpenseManager/pkg/auth"
+	"github.com/nayan9229/ExpenseManager/pkg/pairing"
 )
 
-// Auth serves /api/auth.
-func Auth(w http.ResponseWriter, r *http.Request) {
-	auth.Handler(w, r)
+// Pair serves /api/pair.
+func Pair(w http.ResponseWriter, r *http.Request) {
+	pairing.Handler(w, r)
 }
