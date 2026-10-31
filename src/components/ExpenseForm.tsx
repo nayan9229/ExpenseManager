@@ -1,6 +1,6 @@
 import { ArrowLeft, Check, CircleAlert, Delete, ScanEye, TriangleAlert, Wallet } from 'lucide-react'
 import { useId, useState, type ReactNode } from 'react'
-import { PAYMENT_METHODS, type Category, type Expense, type Member, type ReimbursementStatus } from '../lib/api'
+import { MAX_RECEIPT_NUMBER, PAYMENT_METHODS, type Category, type Expense, type Member, type ReimbursementStatus } from '../lib/api'
 import { addDays, dayLabel } from '../lib/istDate'
 import { pressKey, type Digit, type KeypadKey } from '../lib/keypad'
 import { draftProblem, findDuplicate, visibleCategories, type ExpenseDraft } from '../lib/quickExpense'
@@ -55,6 +55,11 @@ export type ExpenseFormProps = {
   highlight?: Partial<Record<keyof ExpenseDraft, boolean>>
   /** Called on every change the user makes, so a screen knows the draft is theirs now. */
   onEdit?: () => void
+  /**
+   * Shows the "Receipt No." field (the Scan form and the Edit screen; never
+   * Quick Expense, whose Expenses have no Receipt).
+   */
+  receiptNumberField?: boolean
 }
 
 /** "Check this" beside a highlighted field's title. */
@@ -100,12 +105,13 @@ export function ExpenseForm({
   busyLabel = 'Saving…',
   highlight,
   onEdit,
+  receiptNumberField = false,
 }: ExpenseFormProps) {
   const [draft, setDraft] = useState<ExpenseDraft>(initial)
   const [attempted, setAttempted] = useState(false)
   const [duplicateAccepted, setDuplicateAccepted] = useState(false)
   const [changed, setChanged] = useState<Partial<Record<keyof ExpenseDraft, boolean>>>({})
-  const ids = { note: useId(), date: useId(), amount: useId() }
+  const ids = { note: useId(), date: useId(), amount: useId(), receiptNumber: useId() }
 
   function change(patch: Partial<ExpenseDraft>) {
     setDraft((d) => ({ ...d, ...patch }))
@@ -292,6 +298,27 @@ export function ExpenseForm({
           className="min-h-touch w-full rounded-2xl border-2 border-mocha bg-warm-white px-4 text-xl outline-none focus-visible:ring-4 focus-visible:ring-olive-sage"
         />
       </section>
+
+      {receiptNumberField && (
+        <section className={'flex flex-col gap-3' + flag('receiptNumber')}>
+          <label htmlFor={ids.receiptNumber} className={sectionTitle}>
+            Receipt No. <span className="font-normal">(optional)</span> {flagged('receiptNumber') && <CheckThis />}
+          </label>
+          <input
+            id={ids.receiptNumber}
+            type="text"
+            value={draft.receiptNumber ?? ''}
+            maxLength={MAX_RECEIPT_NUMBER}
+            autoComplete="off"
+            autoCapitalize="characters"
+            spellCheck={false}
+            enterKeyHint="done"
+            placeholder="The Receipt Number printed on it"
+            onChange={(e) => change({ receiptNumber: e.target.value })}
+            className="min-h-touch w-full rounded-2xl border-2 border-mocha bg-warm-white px-4 text-xl outline-none focus-visible:ring-4 focus-visible:ring-olive-sage"
+          />
+        </section>
+      )}
 
       {editing ? (
         <>

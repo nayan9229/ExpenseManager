@@ -170,6 +170,12 @@ export type Expense = {
   fileHash: string
   reimbursementStatus: ReimbursementStatus
   status: ExpenseStatus
+  /**
+   * The number the merchant printed on the Receipt (GLOSSARY: Receipt
+   * Number), as text; blank means none. Absent from an older server or an
+   * older copy kept on the phone.
+   */
+  receiptNumber?: string
 }
 
 /** An Expense's lifecycle; a deleted one stays in the Ledger (GLOSSARY: Soft Delete). */
@@ -189,13 +195,25 @@ export type CreateExpenseInput = Pick<
 
 /**
  * The Receipt half of a create (ticket 06): the uploaded file under its
- * temporary name, the SHA-256 of the original, and `force` to save past a
- * DUPLICATE_RECEIPT ("Add anyway").
+ * temporary name, the SHA-256 of the original, the Receipt Number the
+ * Member confirmed on the Scan form, and `force` to save past a
+ * DUPLICATE_RECEIPT ("Add anyway"). The server finds a duplicate by the
+ * file's hash, or by the same Receipt Number and Amount.
  */
 export type ReceiptFields = {
   driveFileId?: string
   fileHash?: string
+  receiptNumber?: string
   force?: boolean
+}
+
+/** The longest Receipt Number the Ledger takes (pkg/ledger MaxReceiptNumberLength). */
+export const MAX_RECEIPT_NUMBER = 40
+
+/** A Receipt Number as the Ledger keeps it: trimmed, and undefined when blank or absent (none). */
+export function normaliseReceiptNumber(value: string | null | undefined): string | undefined {
+  const number = (value ?? '').trim()
+  return number === '' ? undefined : number
 }
 
 /** The Expense that already holds this Receipt, when `err` is a 409 DUPLICATE_RECEIPT; otherwise null. */
@@ -235,9 +253,14 @@ export type BootstrapReport = {
   seeded: Record<string, number>
   /** Found tabs whose empty row 1 got the headers. Absent from an older server. */
   headersWritten?: string[]
+  /** Found tabs whose row 1 lacked only trailing headers, and the ones Bootstrap added at the end. */
+  headersExtended?: HeaderExtension[]
   /** Found tabs whose row 1 is not the headers; Bootstrap left them alone. */
   headerMismatches?: HeaderMismatch[]
 }
+
+/** A tab whose row 1 Bootstrap finished, e.g. Receipt_Number added to an older Ledger's Expenses tab. */
+export type HeaderExtension = { tab: string; added: string[] }
 
 /** A tab whose row 1 is not what the app reads; `message` is for the Admin. */
 export type HeaderMismatch = { tab: string; found: string[]; expected: string[]; message: string }
@@ -310,7 +333,7 @@ export async function createExpense(input: CreateExpenseInput, fetchImpl: typeof
  * keeps its stored value, so "Mark done" can send only the Reimbursement.
  */
 export type UpdateExpenseInput = Pick<Expense, 'id'> &
-  Partial<Pick<Expense, 'expenseDate' | 'paidBy' | 'amount' | 'category' | 'merchantNote' | 'paymentMethod' | 'reimbursementStatus'>>
+  Partial<Pick<Expense, 'expenseDate' | 'paidBy' | 'amount' | 'category' | 'merchantNote' | 'paymentMethod' | 'reimbursementStatus' | 'receiptNumber'>>
 
 /**
  * Edits an Expense in place and returns it as stored (`updatedAt` stamped).

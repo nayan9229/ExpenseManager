@@ -13,7 +13,7 @@ import (
 // UpdateRequest is the PUT body (spec "Expense API contract", Update): the
 // Expense's ID and the editable fields. A field left out keeps its stored
 // value, so Admin Mode's "Mark done" can send only reimbursementStatus.
-// Logged_By, the Receipt columns and the timestamps are not editable;
+// Logged_By, the Receipt file columns and the timestamps are not editable;
 // unknown fields are ignored.
 type UpdateRequest struct {
 	ID                  string   `json:"id"`
@@ -24,6 +24,8 @@ type UpdateRequest struct {
 	MerchantNote        *string  `json:"merchantNote"`
 	PaymentMethod       *string  `json:"paymentMethod"`
 	ReimbursementStatus *string  `json:"reimbursementStatus"`
+	// ReceiptNumber may be corrected on the Edit screen; blank clears it.
+	ReceiptNumber *string `json:"receiptNumber"`
 }
 
 // ValidateUpdate applies an edit to the stored Expense at time now and
@@ -66,6 +68,11 @@ func ValidateUpdate(stored ledger.Expense, req UpdateRequest, members []ledger.M
 	}
 	if req.MerchantNote != nil {
 		if e.MerchantNote, verr = checkNote(*req.MerchantNote); verr != nil {
+			return ledger.Expense{}, verr
+		}
+	}
+	if req.ReceiptNumber != nil {
+		if e.ReceiptNumber, verr = checkReceiptNumber(*req.ReceiptNumber); verr != nil {
 			return ledger.Expense{}, verr
 		}
 	}

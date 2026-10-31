@@ -32,6 +32,7 @@ const expense: Expense = {
   fileHash: 'hash-1',
   reimbursementStatus: 'done',
   status: 'active',
+  receiptNumber: '004521',
 }
 
 describe('canEdit (ADR-0002: enforced on the device only)', () => {
@@ -63,13 +64,23 @@ describe('draftFromExpense', () => {
       note: 'medicines for Papa',
       reimbursementStatus: 'done',
       paidBy: 'kid1',
+      receiptNumber: '004521',
     })
+  })
+
+  test('an Expense kept from an older server has no Receipt No. to send back, so the edit never wipes one', () => {
+    const { receiptNumber: _, ...older } = expense
+    const draft = { ...draftFromExpense(older), note: 'tablets' }
+
+    expect(draft.receiptNumber).toBeUndefined()
+    expect(toUpdateInput(draft, expense.id)).not.toHaveProperty('receiptNumber')
+    expect(toUpdateInput({ ...draft, receiptNumber: ' 77 ' }, expense.id).receiptNumber).toBe('77')
   })
 })
 
 describe('toUpdateInput', () => {
-  test('sends the ID and every editable field, never Logged By or the Receipt', () => {
-    const draft = { ...draftFromExpense(expense), amount: 500, note: '  tablets  ', reimbursementStatus: 'pending' as const }
+  test('sends the ID and every editable field, never Logged By or the Receipt file', () => {
+    const draft = { ...draftFromExpense(expense), amount: 500, note: '  tablets  ', reimbursementStatus: 'pending' as const, receiptNumber: ' 0045 ' }
 
     expect(toUpdateInput(draft, expense.id)).toEqual({
       id: expense.id,
@@ -80,6 +91,11 @@ describe('toUpdateInput', () => {
       merchantNote: 'tablets',
       paymentMethod: 'Cash',
       reimbursementStatus: 'pending',
+      receiptNumber: '0045',
     })
+  })
+
+  test('a cleared Receipt No. is sent blank, so the Ledger cell is emptied', () => {
+    expect(toUpdateInput({ ...draftFromExpense(expense), receiptNumber: '' }, expense.id).receiptNumber).toBe('')
   })
 })

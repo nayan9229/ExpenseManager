@@ -27,7 +27,8 @@ var (
 )
 
 // attachReceipt runs the Receipt half of a create (spec "Expense API
-// contract", Create): the duplicate check on File_Hash, then the file is
+// contract", Create): the duplicate check (File_Hash, or Receipt Number and
+// Amount), then the file is
 // verified to sit in the Receipt Store, given its final name in the month
 // folder of the Expense Date, and linked in expense. It writes the error
 // response and reports false when the create must stop.
@@ -43,17 +44,9 @@ func (s Service) attachReceipt(w http.ResponseWriter, r *http.Request, req Creat
 		return false
 	}
 
-	if !req.Force {
-		for _, e := range ledger.ParseExpenses(rows) {
-			if e.Status == ledger.StatusActive && e.FileHash == hash {
-				httpjson.Write(w, http.StatusConflict, DuplicateReceipt{
-					Code:    "DUPLICATE_RECEIPT",
-					Message: fmt.Sprintf("This receipt was already added on %s for ₹%s", e.ExpenseDate, amountText(e.Amount)),
-					Expense: viewOf(e),
-				})
-				return false
-			}
-		}
+	expense.FileHash = hash
+	if !req.Force && writeDuplicate(w, rows, *expense) {
+		return false
 	}
 
 	ctx := r.Context()
@@ -89,7 +82,48 @@ func (s Service) attachReceipt(w http.ResponseWriter, r *http.Request, req Creat
 	if expense.DriveViewURL == "" {
 		expense.DriveViewURL = "https://drive.google.com/file/d/" + renamed.ID + "/view"
 	}
-	expense.FileHash = hash
+	return true
+}
+
+// duplicateOf finds the active Expense that already holds the Receipt of
+// e, the Expense about to be created: the same File_Hash (the same file),
+// or the same Receipt Number and Amount (another photo of the same
+// Receipt). Receipt Numbers match ignoring case and spaces; a blank
+// File_Hash or Receipt Number matches nothing, so an Expense saved without
+// a Receipt file is checked on its Receipt Number alone.
+func duplicateOf(rows [][]string, e ledger.Expense) (ledger.Expense, bool) {
+	hash := e.FileHash
+	number := receiptNumberKey(e.ReceiptNumber)
+	for _, stored := range ledger.ParseExpenses(rows) {
+		if stored.Status != ledger.StatusActive {
+			continue
+		}
+		if hash != "" && stored.FileHash == hash {
+			return stored, true
+		}
+		if number != "" && receiptNumberKey(stored.ReceiptNumber) == number && stored.Amount == e.Amount {
+			return stored, true
+		}
+	}
+	return ledger.Expense{}, false
+}
+
+func receiptNumberKey(s string) string {
+	return strings.ToLower(strings.Join(strings.Fields(s), ""))
+}
+
+// writeDuplicate answers 409 DUPLICATE_RECEIPT and reports true when
+// duplicateOf finds one.
+func writeDuplicate(w http.ResponseWriter, rows [][]string, e ledger.Expense) bool {
+	dup, ok := duplicateOf(rows, e)
+	if !ok {
+		return false
+	}
+	httpjson.Write(w, http.StatusConflict, DuplicateReceipt{
+		Code:    "DUPLICATE_RECEIPT",
+		Message: fmt.Sprintf("This receipt was already added on %s for ₹%s", dup.ExpenseDate, amountText(dup.Amount)),
+		Expense: viewOf(dup),
+	})
 	return true
 }
 

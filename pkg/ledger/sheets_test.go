@@ -32,7 +32,7 @@ func textSpans(t *testing.T, tab Tab) []span {
 
 func TestOnlyAmountColumnsStayNumeric(t *testing.T) {
 	cases := map[Tab][]span{
-		Expenses:       {{0, 6}, {7, 16}}, // Amount is column G
+		Expenses:       {{0, 6}, {7, 17}}, // Amount is column G
 		Members:        {{0, 6}},          // PIN_Code keeps its leading zero
 		Categories:     {{0, 3}, {4, 5}},  // Monthly_Budget_Limit is column D
 		RecurringRules: {{0, 2}, {3, 4}},  // Amount is C, Due_Day_Of_Month is E
@@ -78,12 +78,34 @@ func TestRowOneIsTheHeadersEmptyOrSomethingElse(t *testing.T) {
 		{"no row at all", nil, HeaderEmpty},
 		{"blank cells", []string{"", "  "}, HeaderEmpty},
 		{"a renamed column", []string{"Member_ID", "Full Name", "Role", "Default_Payment_Method", "PIN_Code", "Avatar_Color"}, HeaderMismatched},
-		{"too few columns", members[:3], HeaderMismatched},
+		{"trailing headers missing", members[:3], HeaderShort},
+		{"trailing headers missing, with spaces", []string{" Member_ID", "Name "}, HeaderShort},
+		{"too few columns and one renamed", []string{"Member_ID", "Full Name"}, HeaderMismatched},
 		{"a data row in row 1", []string{"admin", "Admin", "admin", "UPI", "", "#6E7250"}, HeaderMismatched},
 	}
 	for _, c := range cases {
 		if got := CheckHeader(Members, c.row); got != c.want {
 			t.Errorf("%s: CheckHeader = %v, want %v", c.name, got, c.want)
 		}
+	}
+}
+
+func TestColumnLettersCountLikeTheSheet(t *testing.T) {
+	for i, want := range map[int]string{0: "A", 15: "P", 16: "Q", 25: "Z", 26: "AA", 27: "AB", 51: "AZ", 52: "BA"} {
+		if got := columnLetter(i); got != want {
+			t.Errorf("columnLetter(%d) = %q, want %q", i, got, want)
+		}
+	}
+}
+
+func TestColumnsRepairAppendsAreFormattedAsTextToo(t *testing.T) {
+	reqs := textFormatRequests(7, Columns[Expenses], 16)
+
+	if len(reqs) != 1 {
+		t.Fatalf("got %d requests, want one for Receipt_Number", len(reqs))
+	}
+	r := reqs[0].RepeatCell.Range
+	if r.StartColumnIndex != 16 || r.EndColumnIndex != 17 || r.StartRowIndex != 1 || r.SheetId != 7 {
+		t.Errorf("range = %+v, want column Q below the header on sheet 7", r)
 	}
 }

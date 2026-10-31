@@ -109,3 +109,58 @@ func TestExtraColumnsAfterTheSpecHeadersAreNotAMismatch(t *testing.T) {
 		t.Errorf("headerMismatches = %v, want none for appended columns", mismatches)
 	}
 }
+
+func TestRepairAddsTheHeadersMissingFromTheEndOfRowOne(t *testing.T) {
+	f := newFixture(t)
+	seedAll(f)
+	v1 := ledger.Columns[ledger.Expenses][:16] // the v1.0.0 Expenses header, before Receipt_Number
+	old := []string{"e1", "", "", "2026-10-30", "admin", "admin", "450", "INR", "Other", "milk", "UPI", "", "", "", "none", "active"}
+	f.ledger.Seed(ledger.Expenses, old)
+	f.ledger.Tab(ledger.Expenses).Header = append([]string(nil), v1...)
+	rows := f.ledger.Dump()[ledger.Expenses].Rows
+
+	report := run(t, f)
+
+	got := f.ledger.Tab(ledger.Expenses)
+	if !reflect.DeepEqual(got.Header, ledger.Columns[ledger.Expenses]) {
+		t.Errorf("Expenses header = %q, want the full headers", got.Header)
+	}
+	if !reflect.DeepEqual(got.Rows, rows) {
+		t.Errorf("Expenses rows changed: %q, want %q", got.Rows, rows)
+	}
+	extended := list(t, report, "headersExtended")
+	want := []any{map[string]any{"tab": "Expenses", "added": []any{"Receipt_Number"}}}
+	if !reflect.DeepEqual(extended, want) {
+		t.Errorf("headersExtended = %v, want %v", extended, want)
+	}
+	if mismatches := list(t, report, "headerMismatches"); len(mismatches) != 0 {
+		t.Errorf("headerMismatches = %v, want none", mismatches)
+	}
+	if written := list(t, report, "headersWritten"); len(written) != 0 {
+		t.Errorf("headersWritten = %v, want none", written)
+	}
+
+	again := run(t, f)
+	if extended := list(t, again, "headersExtended"); len(extended) != 0 {
+		t.Errorf("second run headersExtended = %v, want none", extended)
+	}
+}
+
+func TestAShortRowOneWithARenamedColumnIsStillAMismatch(t *testing.T) {
+	f := newFixture(t)
+	seedAll(f)
+	odd := append(append([]string(nil), ledger.Columns[ledger.Expenses][:8]...), "Type")
+	f.ledger.Tab(ledger.Expenses).Header = append([]string(nil), odd...)
+
+	report := run(t, f)
+
+	if got := f.ledger.Tab(ledger.Expenses).Header; !reflect.DeepEqual(got, odd) {
+		t.Errorf("Expenses header = %q, want it left as %q", got, odd)
+	}
+	if mismatches := list(t, report, "headerMismatches"); len(mismatches) != 1 {
+		t.Errorf("headerMismatches = %v, want one for Expenses", mismatches)
+	}
+	if extended := list(t, report, "headersExtended"); len(extended) != 0 {
+		t.Errorf("headersExtended = %v, want none", extended)
+	}
+}

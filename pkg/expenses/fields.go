@@ -25,7 +25,7 @@ func checkAmount(amount float64) (float64, *ValidationError) {
 
 // checkCategory returns the Ledger's spelling of the Category.
 func checkCategory(categories []ledger.Category, name string) (string, *ValidationError) {
-	category, ok := findCategory(categories, name)
+	category, ok := ledger.FindCategory(ledger.CategoryNames(categories), name)
 	if !ok {
 		return "", invalid("UNKNOWN_CATEGORY", "%q is not a Category in the Ledger", name)
 	}
@@ -79,16 +79,14 @@ func checkNote(s string) (string, *ValidationError) {
 	return note, nil
 }
 
-// findCategory matches a name the way a human would (case and surrounding
-// spaces ignored) and returns the Ledger's spelling.
-func findCategory(categories []ledger.Category, name string) (string, bool) {
-	name = strings.TrimSpace(name)
-	for _, c := range categories {
-		if name != "" && strings.EqualFold(c.Name, name) {
-			return c.Name, true
-		}
+// checkReceiptNumber trims a Receipt Number; blank means none. It is text
+// whatever it looks like (the Ledger adapter keeps `004521` and `4521/A`).
+func checkReceiptNumber(s string) (string, *ValidationError) {
+	number := strings.TrimSpace(s)
+	if utf8.RuneCountInString(number) > ledger.MaxReceiptNumberLength {
+		return "", invalid("INVALID_RECEIPT_NUMBER", "The Receipt Number can be at most %d characters", ledger.MaxReceiptNumberLength)
 	}
-	return "", false
+	return number, nil
 }
 
 func findMember(members []ledger.Member, id string) (string, bool) {

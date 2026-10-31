@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/nayan9229/ExpenseManager/pkg/ledger"
@@ -58,6 +59,7 @@ func fullEdit() map[string]any {
 		"merchantNote":        "vegetables, not medicines",
 		"paymentMethod":       "UPI",
 		"reimbursementStatus": "pending",
+		"receiptNumber":       " INV 0077 ",
 	}
 }
 
@@ -73,7 +75,7 @@ func TestAnEditRewritesTheEditableFieldsAndStampsUpdatedAt(t *testing.T) {
 	wantRow := []string{
 		storedID, "2026-10-30T20:00:00+05:30", "2026-10-31T09:15:00+05:30", "2026-10-29", "ramesh", "kid1",
 		"540.5", "INR", "Groceries & Vegetables", "vegetables, not medicines", "UPI", "drive-1", "https://drive.example/1", "hash-1",
-		"pending", "active",
+		"pending", "active", "INV 0077",
 	}
 	rows := f.ledger.Tab(ledger.Expenses).Rows
 	if len(rows) != 2 || !reflect.DeepEqual(rows[1], wantRow) {
@@ -87,7 +89,7 @@ func TestAnEditRewritesTheEditableFieldsAndStampsUpdatedAt(t *testing.T) {
 		"expenseDate": "2026-10-29", "loggedBy": "ramesh", "paidBy": "kid1", "amount": 540.5, "currency": "INR",
 		"category": "Groceries & Vegetables", "merchantNote": "vegetables, not medicines", "paymentMethod": "UPI",
 		"driveFileId": "drive-1", "driveViewUrl": "https://drive.example/1", "fileHash": "hash-1",
-		"reimbursementStatus": "pending", "status": "active",
+		"reimbursementStatus": "pending", "status": "active", "receiptNumber": "INV 0077",
 	}
 	if !reflect.DeepEqual(body, want) {
 		t.Errorf("body = %v\nwant   %v", body, want)
@@ -230,6 +232,39 @@ func TestLoggedByAndTheReceiptCannotBeEdited(t *testing.T) {
 			t.Errorf("%s = %v, want %v (not editable)", key, body[key], want)
 		}
 	}
+}
+
+func TestAnEditCanClearOrKeepTheReceiptNumber(t *testing.T) {
+	stored := storedExpense()
+	stored.ReceiptNumber = "004521"
+
+	t.Run("left out keeps it", func(t *testing.T) {
+		f := newFixture(t)
+		f.ledger.Seed(ledger.Expenses, stored.Row())
+		status, body, raw := send(t, f, http.MethodPut, "", map[string]any{"id": storedID, "merchantNote": "fixed"})
+		if status != http.StatusOK || body["receiptNumber"] != "004521" {
+			t.Errorf("status = %d body = %s, want 200 with the Receipt Number kept", status, raw)
+		}
+	})
+	t.Run("blank clears it", func(t *testing.T) {
+		f := newFixture(t)
+		f.ledger.Seed(ledger.Expenses, stored.Row())
+		status, body, raw := send(t, f, http.MethodPut, "", map[string]any{"id": storedID, "receiptNumber": "  "})
+		if status != http.StatusOK || body["receiptNumber"] != "" || f.ledger.Tab(ledger.Expenses).Rows[0][16] != "" {
+			t.Errorf("status = %d body = %s, want 200 with the Receipt Number cleared", status, raw)
+		}
+	})
+	t.Run("over 40 characters is refused", func(t *testing.T) {
+		f := newFixture(t)
+		f.ledger.Seed(ledger.Expenses, stored.Row())
+		status, body, raw := send(t, f, http.MethodPut, "", map[string]any{"id": storedID, "receiptNumber": strings.Repeat("x", 41)})
+		if status != http.StatusUnprocessableEntity || body["code"] != "INVALID_RECEIPT_NUMBER" {
+			t.Errorf("status = %d body = %s, want 422 INVALID_RECEIPT_NUMBER", status, raw)
+		}
+		if got := f.ledger.Tab(ledger.Expenses).Rows[0][16]; got != "004521" {
+			t.Errorf("Receipt_Number cell = %q, want it untouched", got)
+		}
+	})
 }
 
 func TestAnEditedFormulaNoteIsReadBackAsText(t *testing.T) {

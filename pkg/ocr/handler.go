@@ -8,6 +8,7 @@ import (
 	"github.com/nayan9229/ExpenseManager/pkg/deps"
 	"github.com/nayan9229/ExpenseManager/pkg/endpoint"
 	"github.com/nayan9229/ExpenseManager/pkg/httpjson"
+	"github.com/nayan9229/ExpenseManager/pkg/ledger"
 	"github.com/nayan9229/ExpenseManager/pkg/receiptstore"
 	"github.com/nayan9229/ExpenseManager/pkg/session"
 )
@@ -20,7 +21,9 @@ const MaxSize = 20 << 20
 // Service is the `ocr` function with its seams injected.
 type Service struct {
 	Store receiptstore.Store
-	OCR   OCR
+	// Ledger supplies the Household's Categories, the model's Category enum.
+	Ledger ledger.Ledger
+	OCR    OCR
 	// FolderID is the Household's Drive folder (GOOGLE_DRIVE_FOLDER_ID).
 	FolderID string
 }
@@ -47,7 +50,7 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			return nil, err
 		}
-		return Service{Store: d.Store, OCR: NewGemini(cfg), FolderID: d.FolderID}.serve, nil
+		return Service{Store: d.Store, Ledger: d.Ledger, OCR: NewGemini(cfg), FolderID: d.FolderID}.serve, nil
 	})(w, r)
 }
 
@@ -94,12 +97,23 @@ func (s Service) serve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	answer, err := s.OCR.Read(ctx, Receipt{Bytes: content, MIMEType: file.MIMEType})
+	snap, err := s.Ledger.Read(ctx, ledger.Categories)
+	if errors.Is(err, ledger.ErrNotFound) {
+		httpjson.WriteError(w, http.StatusNotFound, "LEDGER_NOT_FOUND", "The Ledger is missing; run Bootstrap")
+		return
+	}
+	if err != nil {
+		httpjson.WriteError(w, http.StatusBadGateway, "GOOGLE_ERROR", err.Error())
+		return
+	}
+	categories := ledger.CategoryNames(ledger.ParseCategories(snap.Rows[ledger.Categories]))
+
+	answer, err := s.OCR.Read(ctx, Receipt{Bytes: content, MIMEType: file.MIMEType, Categories: categories})
 	if err != nil {
 		httpjson.WriteError(w, http.StatusBadGateway, "GEMINI_ERROR", err.Error())
 		return
 	}
-	result, err := Validate(answer)
+	result, err := Validate(answer, categories)
 	var rejected *Rejected
 	if errors.As(err, &rejected) {
 		httpjson.WriteError(w, http.StatusUnprocessableEntity, rejected.Code, rejected.Message)

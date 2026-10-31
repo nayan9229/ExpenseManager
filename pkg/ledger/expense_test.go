@@ -29,7 +29,7 @@ func TestAnExpenseRowFollowsTheColumnOrder(t *testing.T) {
 	want := []string{
 		"6f1c2a52-8a0e-4d7b-9d55-0b9e1c3f7a10", "2026-10-31T09:15:00+05:30", "2026-10-31T09:15:00+05:30",
 		"2026-10-30", "ramesh", "ramesh", "450", "INR", "Medical & Pharmacy", "medicines for Papa", "Cash",
-		"", "", "", "pending", "active",
+		"", "", "", "pending", "active", "",
 	}
 	if !reflect.DeepEqual(row, want) {
 		t.Errorf("Row() = %q\nwant    %q", row, want)
@@ -42,6 +42,7 @@ func TestAnExpenseRowFollowsTheColumnOrder(t *testing.T) {
 func TestAnExpenseSurvivesARoundTripThroughItsRow(t *testing.T) {
 	e := sampleExpense()
 	e.Amount = 1234.5
+	e.ReceiptNumber = "004521/A"
 
 	got := ParseExpenses([][]string{e.Row()})
 
@@ -70,6 +71,41 @@ func TestHandEditedExpenseRowsAreSkippedOrDefaulted(t *testing.T) {
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("ParseExpenses = %+v\nwant          %+v", got, want)
+	}
+}
+
+func TestTheReceiptNumberIsColumnQAfterStatus(t *testing.T) {
+	cols := Columns[Expenses]
+	if len(cols) != 17 || cols[15] != "Status" || cols[16] != "Receipt_Number" {
+		t.Fatalf("Expenses columns = %q, want Receipt_Number appended after Status as column Q", cols)
+	}
+	e := sampleExpense()
+	e.ReceiptNumber = "INV-77"
+	if row := e.Row(); row[16] != "INV-77" {
+		t.Errorf("Row()[16] = %q, want the Receipt Number", row[16])
+	}
+}
+
+func TestARowWrittenBeforeTheReceiptNumberColumnReadsAsBlank(t *testing.T) {
+	old := sampleExpense().Row()[:16]
+
+	got := ParseExpenses([][]string{old})
+
+	if len(got) != 1 || got[0].ReceiptNumber != "" {
+		t.Fatalf("ParseExpenses(16-cell row) = %+v, want one Expense with a blank Receipt Number", got)
+	}
+}
+
+func TestAReceiptNumberIsTrimmedAndOtherwiseReadAsStored(t *testing.T) {
+	for stored, want := range map[string]string{"  INV-77  ": "INV-77", "'A12": "'A12", " '=7 ": "'=7"} {
+		row := sampleExpense().Row()
+		row[16] = stored
+
+		got := ParseExpenses([][]string{row})
+
+		if got[0].ReceiptNumber != want {
+			t.Errorf("Receipt_Number cell %q read as %q, want %q", stored, got[0].ReceiptNumber, want)
+		}
 	}
 }
 

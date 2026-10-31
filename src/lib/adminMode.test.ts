@@ -318,6 +318,20 @@ describe('repairSummary', () => {
       }),
     ).toEqual(['Wrote the headers in row 1 of the Expenses tab.', 'Wrote the headers in row 1 of the Recurring Rules tab.'])
   })
+
+  test('says which new columns were added to an older Ledger', () => {
+    expect(
+      repairSummary({
+        receiptsFolder: { id: 'f', created: false },
+        ledger: { id: 'l', created: false },
+        tabs: tabs(),
+        seeded: seeded(),
+        headersWritten: [],
+        headersExtended: [{ tab: 'Expenses', added: ['Receipt_Number'] }],
+        headerMismatches: [],
+      }),
+    ).toEqual(['Added the Receipt_Number column to the Expenses tab.'])
+  })
 })
 
 describe('repairWarnings', () => {

@@ -217,6 +217,10 @@ export function repairSummary(report: BootstrapReport): string[] {
   }
   const headed = [...(report.headersWritten ?? [])].sort((a, b) => TAB_ORDER.indexOf(a) - TAB_ORDER.indexOf(b))
   for (const tab of headed) lines.push(`Wrote the headers in row 1 of the ${tabName(tab)} tab.`)
+  const extended = [...(report.headersExtended ?? [])].sort((a, b) => TAB_ORDER.indexOf(a.tab) - TAB_ORDER.indexOf(b.tab))
+  for (const { tab, added } of extended) {
+    lines.push(`Added the ${added.join(', ')} column${added.length === 1 ? '' : 's'} to the ${tabName(tab)} tab.`)
+  }
   return lines.length > 0 ? lines : ['Nothing was missing. The Receipts folder, the Ledger and its four tabs are all there.']
 }
 

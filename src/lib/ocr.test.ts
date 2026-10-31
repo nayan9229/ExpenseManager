@@ -31,7 +31,8 @@ const pharmacyBill: OcrResult = {
   currency: 'INR',
   category: 'Medical & Pharmacy',
   paymentMethod: 'UPI',
-  confidence: { merchant: 0.95, expenseDate: 0.9, totalAmount: 0.97, category: 0.88, paymentMethod: 0.92 },
+  receiptNumber: '004521/A',
+  confidence: { merchant: 0.95, expenseDate: 0.9, totalAmount: 0.97, category: 0.88, paymentMethod: 0.92, receiptNumber: 0.9 },
   lineItemSummary: 'paracetamol, cough syrup, bandages',
   model: 'gemini-3.5-flash-lite',
 }
@@ -40,7 +41,7 @@ const base = newDraft(ramesh, today)
 const prefill = (result: OcrResult, cats = categories) => prefillFromOcr(result, base, cats, today)
 
 describe('prefillFromOcr', () => {
-  test('a clear receipt fills amount, Category, Payment Method, date and note, and highlights nothing', () => {
+  test('a clear receipt fills amount, Category, Payment Method, date, note and Receipt No., and highlights nothing', () => {
     const { draft, highlight } = prefill(pharmacyBill)
 
     expect(draft).toEqual({
@@ -50,6 +51,7 @@ describe('prefillFromOcr', () => {
       paymentMethod: 'UPI',
       expenseDate: '2026-10-30',
       note: 'Apollo Pharmacy: paracetamol, cough syrup, bandages',
+      receiptNumber: '004521/A',
     })
     expect(highlight).toEqual({})
   })
@@ -57,14 +59,15 @@ describe('prefillFromOcr', () => {
   test('fields the model is less than 0.6 sure of are highlighted, and still filled', () => {
     const { draft, highlight } = prefill({
       ...pharmacyBill,
-      confidence: { merchant: 0.59, expenseDate: 0.2, totalAmount: 0.5, category: 0.6, paymentMethod: 0.4 },
+      confidence: { merchant: 0.59, expenseDate: 0.2, totalAmount: 0.5, category: 0.6, paymentMethod: 0.4, receiptNumber: 0.55 },
     })
 
     expect(LOW_CONFIDENCE).toBe(0.6)
     expect(draft.amount).toBe(450)
     expect(draft.expenseDate).toBe('2026-10-30')
     expect(draft.paymentMethod).toBe('UPI')
-    expect(highlight).toEqual({ amount: true, expenseDate: true, paymentMethod: true, note: true })
+    expect(draft.receiptNumber).toBe('004521/A')
+    expect(highlight).toEqual({ amount: true, expenseDate: true, paymentMethod: true, note: true, receiptNumber: true })
   })
 
   test('what the receipt does not show keeps the blank form value and is highlighted', () => {
@@ -76,12 +79,13 @@ describe('prefillFromOcr', () => {
       currency: null,
       category: 'Other',
       paymentMethod: null,
-      confidence: { merchant: 0, expenseDate: 0, totalAmount: 0, category: 0.3, paymentMethod: 0 },
+      receiptNumber: null,
+      confidence: { merchant: 0, expenseDate: 0, totalAmount: 0, category: 0.3, paymentMethod: 0, receiptNumber: 0 },
       lineItemSummary: '',
       model: 'gemini-3.5-flash-lite',
     })
 
-    expect(draft).toEqual({ ...base, category: 'Other' })
+    expect(draft).toEqual({ ...base, category: 'Other', receiptNumber: '' })
     expect(highlight).toEqual({ amount: true, category: true, expenseDate: true, paymentMethod: true, note: true })
   })
 
@@ -97,6 +101,42 @@ describe('prefillFromOcr', () => {
 
     expect(draft.category).toBeNull()
     expect(highlight).toEqual({ category: true })
+  })
+
+  test('no Category from OCR (none of the Household’s fitted) is left unpicked and highlighted', () => {
+    const { draft, highlight } = prefill({ ...pharmacyBill, category: null, confidence: { ...pharmacyBill.confidence, category: 0 } })
+
+    expect(draft.category).toBeNull()
+    expect(highlight).toEqual({ category: true })
+  })
+
+  test('a petrol pump Receipt picks Petrol & Transport when the Member can see it', () => {
+    const fuel = { ...pharmacyBill, merchant: 'HP Petrol Pump', category: 'Petrol & Transport' }
+
+    expect(prefill(fuel, [...categories, category('Petrol & Transport', '🚗')]).draft.category).toBe('Petrol & Transport')
+    expect(prefill(fuel).highlight).toEqual({ category: true })
+  })
+
+  test('the Receipt No. is trimmed, kept as text and cut to the 40 characters the Ledger takes', () => {
+    expect(prefill({ ...pharmacyBill, receiptNumber: '  0045  ' }).draft.receiptNumber).toBe('0045')
+    expect(prefill({ ...pharmacyBill, receiptNumber: '9'.repeat(50) }).draft.receiptNumber).toHaveLength(40)
+  })
+
+  test('a Receipt with no Receipt No. leaves the field blank and not highlighted: many Receipts have none', () => {
+    for (const receiptNumber of [null, '', '   ']) {
+      const { draft, highlight } = prefill({ ...pharmacyBill, receiptNumber, confidence: { ...pharmacyBill.confidence, receiptNumber: 0 } })
+
+      expect(draft.receiptNumber).toBe('')
+      expect(highlight).toEqual({})
+    }
+  })
+
+  test('an answer from a server that predates the Receipt No. leaves it blank and not highlighted', () => {
+    const { receiptNumber: _, ...older } = pharmacyBill
+    const { draft, highlight } = prefill({ ...older, confidence: { ...pharmacyBill.confidence, receiptNumber: undefined } } as unknown as OcrResult)
+
+    expect(draft.receiptNumber).toBe('')
+    expect(highlight).toEqual({})
   })
 
   test('the Category is matched ignoring case and spaces, in the Ledger spelling', () => {

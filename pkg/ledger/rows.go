@@ -1,6 +1,9 @@
 package ledger
 
-import "strconv"
+import (
+	"strconv"
+	"strings"
+)
 
 // Role is a Member's permission tier (GLOSSARY: Role).
 type Role string
@@ -65,6 +68,31 @@ type Category struct {
 // Row maps the Category onto the Categories column order.
 func (c Category) Row() []string {
 	return []string{c.Name, c.Emoji, c.ColorHex, formatAmount(c.MonthlyBudgetLimit), joinRoles(c.VisibleToRoles)}
+}
+
+// CategoryNames lists the Categories' names in Ledger order.
+func CategoryNames(categories []Category) []string {
+	var names []string
+	for _, c := range categories {
+		names = append(names, c.Name)
+	}
+	return names
+}
+
+// FindCategory matches name against the Category names the way a human
+// would (case and surrounding spaces ignored) and returns the Ledger's
+// spelling. A blank name is no Category.
+func FindCategory(names []string, name string) (string, bool) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return "", false
+	}
+	for _, c := range names {
+		if strings.EqualFold(c, name) {
+			return c, true
+		}
+	}
+	return "", false
 }
 
 // RecurringRule is one row of the Recurring_Rules tab.

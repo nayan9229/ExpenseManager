@@ -32,7 +32,7 @@ var Columns = map[Tab][]string{
 	Expenses: {
 		"ID", "Created_At", "Updated_At", "Expense_Date", "Logged_By", "Paid_By", "Amount", "Currency",
 		"Category", "Merchant_Note", "Payment_Method", "Drive_File_ID", "Drive_View_URL", "File_Hash",
-		"Reimbursement_Status", "Status",
+		"Reimbursement_Status", "Status", "Receipt_Number",
 	},
 	Members:        {"Member_ID", "Name", "Role", "Default_Payment_Method", "PIN_Code", "Avatar_Color"},
 	Categories:     {"Category_Name", "Icon_Emoji", "Color_Hex", "Monthly_Budget_Limit", "Visible_To_Roles"},
@@ -48,9 +48,11 @@ const SpreadsheetName = "Expenses_Database"
 type Ledger interface {
 	// Ensure finds or creates the Ledger spreadsheet, then every missing tab
 	// with its header row written and frozen. An existing tab is repaired:
-	// row 1 is frozen, and an empty row 1 gets the headers; a non-empty row 1
-	// that is not the headers is left alone and reported. Running it twice
-	// changes nothing.
+	// row 1 is frozen, an empty row 1 gets the headers, and a row 1 that is
+	// the headers with only trailing ones missing (a Ledger made before a
+	// column was appended) gets the missing ones written at its end; any
+	// other row 1 is left alone and reported. Running it twice changes
+	// nothing.
 	Ensure(ctx context.Context) (Report, error)
 	// Read returns the data rows (everything below the header) of each tab
 	// in one round-trip. Rows are padded to the tab's column count and blank
@@ -74,6 +76,9 @@ type Report struct {
 	// HeaderWritten is true for a found tab whose empty row 1 this call
 	// filled with the headers.
 	HeaderWritten map[Tab]bool
+	// HeaderExtended holds, for each found tab whose row 1 lacked only
+	// trailing headers, the headers this call wrote after them.
+	HeaderExtended map[Tab][]string
 	// HeaderMismatch holds row 1 of each found tab whose row 1 is neither
 	// empty nor the headers; Ensure did not touch it.
 	HeaderMismatch map[Tab][]string
@@ -88,6 +93,9 @@ const (
 	HeaderOK HeaderState = iota
 	// HeaderEmpty is a blank row 1: Ensure writes the headers.
 	HeaderEmpty
+	// HeaderShort is the schema's header with only trailing columns
+	// missing: Ensure writes them at the end of row 1.
+	HeaderShort
 	// HeaderMismatched is anything else: Ensure leaves it for the Admin.
 	HeaderMismatched
 )
@@ -99,15 +107,24 @@ func CheckHeader(tab Tab, row []string) HeaderState {
 		return HeaderEmpty
 	}
 	want := Columns[tab]
-	if len(row) < len(want) {
-		return HeaderMismatched
-	}
 	for i, col := range want {
+		if i >= len(row) {
+			return HeaderShort
+		}
 		if strings.TrimSpace(row[i]) != col {
 			return HeaderMismatched
 		}
 	}
 	return HeaderOK
+}
+
+// MissingHeaders is what Ensure appends to a HeaderShort row 1.
+func MissingHeaders(tab Tab, row []string) []string {
+	want := Columns[tab]
+	if len(row) >= len(want) {
+		return nil
+	}
+	return append([]string(nil), want[len(row):]...)
 }
 
 // Snapshot is what Read returns: the rows per requested tab plus the

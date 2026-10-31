@@ -37,7 +37,11 @@ type CreateRequest struct {
 	DriveFileID string `json:"driveFileId"`
 	// FileHash is hex SHA-256 of the original file, for the duplicate check.
 	FileHash string `json:"fileHash"`
-	// Force saves even when FileHash matches an active Expense ("Add anyway").
+	// ReceiptNumber is the number the merchant printed on the Receipt, as
+	// OCR read it and the Member confirmed it on the Scan form; optional.
+	ReceiptNumber string `json:"receiptNumber"`
+	// Force saves even when FileHash, or the Receipt Number and Amount,
+	// match an active Expense ("Add anyway").
 	Force bool `json:"force"`
 }
 
@@ -110,12 +114,16 @@ func ValidateCreate(req CreateRequest, members []ledger.Member, categories []led
 	if verr != nil {
 		return ledger.Expense{}, verr
 	}
+	receiptNumber, verr := checkReceiptNumber(req.ReceiptNumber)
+	if verr != nil {
+		return ledger.Expense{}, verr
+	}
 	stamp := now.In(ledger.IST).Format(time.RFC3339)
 	return ledger.Expense{
 		ID: id, CreatedAt: stamp, UpdatedAt: stamp, ExpenseDate: date,
 		LoggedBy: loggedBy, PaidBy: paidBy, Amount: amount, Currency: ledger.Currency,
 		Category: category, MerchantNote: note, PaymentMethod: method,
-		Reimbursement: reimbursement, Status: ledger.StatusActive,
+		Reimbursement: reimbursement, Status: ledger.StatusActive, ReceiptNumber: receiptNumber,
 	}, nil
 }
 
@@ -148,6 +156,10 @@ func (s Service) create(w http.ResponseWriter, r *http.Request) {
 		if !s.attachReceipt(w, r, req, snap.Rows[ledger.Expenses], &expense) {
 			return
 		}
+	} else if !req.Force && writeDuplicate(w, snap.Rows[ledger.Expenses], expense) {
+		// No Receipt file, so no File_Hash: only the Receipt Number and
+		// Amount can match.
+		return
 	}
 	if err := s.Ledger.Append(r.Context(), ledger.Expenses, [][]string{expense.Row()}); err != nil {
 		writeLedgerError(w, err)

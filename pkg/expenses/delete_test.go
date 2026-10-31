@@ -35,7 +35,7 @@ func TestADeleteMarksTheRowDeletedAndKeepsIt(t *testing.T) {
 // Updated_At, never the cells the Admin wrote.
 func TestADeleteLeavesEveryOtherCellAsTheAdminTypedIt(t *testing.T) {
 	f := newFixture(t)
-	handTyped := []string{storedID, "", "", "2026/10/30", "ramesh", "", "₹1,200", "inr", " Other ", "=SUM(1,2)", "cash", "", "", "", "", "Active"}
+	handTyped := []string{storedID, "", "", "2026/10/30", "ramesh", "", "₹1,200", "inr", " Other ", "=SUM(1,2)", "cash", "", "", "", "", "Active", "'0042"}
 	f.ledger.Seed(ledger.Expenses, handTyped)
 
 	if status, _, raw := send(t, f, http.MethodDelete, "?id="+storedID, nil); status != http.StatusOK {

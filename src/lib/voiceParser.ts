@@ -133,6 +133,14 @@ const CATEGORY_WORDS: Record<string, Keywords> = {
       'खाना', 'नाश्ता', 'होटल', 'रेस्टोरेंट', 'फिल्म', 'पिक्चर',
     ],
   },
+  'petrol & transport': {
+    strong: [
+      'petrol', 'diesel', 'cng', 'fuel', 'pump', 'parking', 'toll', 'auto', 'rickshaw', 'rikshaw', 'riksha', 'cab',
+      'taxi', 'uber', 'ola', 'rapido',
+      'पेट्रोल', 'डीजल', 'सीएनजी', 'पंप', 'पार्किंग', 'टोल', 'ऑटो', 'आटो', 'रिक्शा', 'रिक्शे', 'कैब', 'टैक्सी', 'उबर',
+      'ओला', 'रैपिडो',
+    ],
+  },
 }
 
 /** The words of a Category's own name ("Petrol & Travel" -> petrol, travel). */

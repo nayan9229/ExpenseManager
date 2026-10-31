@@ -122,7 +122,7 @@ func (g *Gemini) Read(ctx context.Context, r Receipt) (Answer, error) {
 	}
 	body, err := json.Marshal(request{
 		Contents:         []content{{Role: "user", Parts: parts}},
-		GenerationConfig: generationConfig{ResponseMIMEType: "application/json", ResponseSchema: ResponseSchema()},
+		GenerationConfig: generationConfig{ResponseMIMEType: "application/json", ResponseSchema: ResponseSchema(r.Categories)},
 		Store:            false,
 	})
 	if err != nil {

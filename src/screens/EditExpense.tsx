@@ -113,6 +113,7 @@ export function EditExpense({ member, model, expense, onSaved, onDeleted, onCanc
       onSubmit={(draft: ExpenseDraft) => void run(() => saveEdit(toUpdateInput(draft, expense.id), { base: expense }), 'saved', onSaved)}
       onCancel={onCancel}
       footer={footer}
+      receiptNumberField
     />
   )
 }
