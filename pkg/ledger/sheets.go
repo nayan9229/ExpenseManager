@@ -214,7 +214,7 @@ func (s *Sheets) Append(ctx context.Context, tab Tab, rows [][]string) error {
 	}
 	values := make([][]any, len(rows))
 	for i, row := range rows {
-		values[i] = toAny(row)
+		values[i] = userEntered(row)
 	}
 	_, err = s.sheets.Spreadsheets.Values.Append(id, a1(tab, ""), &sheets.ValueRange{Values: values}).
 		ValueInputOption("USER_ENTERED").
@@ -233,7 +233,7 @@ func (s *Sheets) Update(ctx context.Context, tab Tab, index int, row []string) e
 	if err != nil {
 		return err
 	}
-	_, err = s.sheets.Spreadsheets.Values.Update(id, a1(tab, "A"+strconv.Itoa(index+2)), &sheets.ValueRange{Values: [][]any{toAny(row)}}).
+	_, err = s.sheets.Spreadsheets.Values.Update(id, a1(tab, "A"+strconv.Itoa(index+2)), &sheets.ValueRange{Values: [][]any{userEntered(row)}}).
 		ValueInputOption("USER_ENTERED").
 		Context(ctx).
 		Do()
@@ -262,6 +262,17 @@ func a1(tab Tab, cell string) string {
 		return "'" + string(tab) + "'"
 	}
 	return "'" + string(tab) + "'!" + cell
+}
+
+// userEntered prepares a row for USER_ENTERED: numbers and dates are parsed
+// as the Admin would type them, and no cell can become a formula (see
+// escapeText).
+func userEntered(row []string) []any {
+	out := make([]any, len(row))
+	for i, cell := range row {
+		out[i] = escapeText(cell)
+	}
+	return out
 }
 
 func toAny(row []string) []any {

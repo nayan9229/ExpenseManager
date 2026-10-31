@@ -53,9 +53,11 @@ type Ledger interface {
 	// in one round-trip. Rows are padded to the tab's column count and blank
 	// rows are kept, so an index into Rows[tab] is stable for Update.
 	Read(ctx context.Context, tabs ...Tab) (Snapshot, error)
-	// Append adds rows after the last row of a tab.
+	// Append adds rows after the last row of a tab. Cells are parsed as the
+	// Admin would type them (numbers stay numbers) but never as a formula.
 	Append(ctx context.Context, tab Tab, rows [][]string) error
 	// Update rewrites one data row; index 0 is the first row below the header.
+	// The same no-formula rule as Append applies.
 	Update(ctx context.Context, tab Tab, index int, row []string) error
 }
 
