@@ -53,10 +53,20 @@ func (s Service) Handler() http.HandlerFunc {
 	return session.Require(s.serve)
 }
 
+// rejectMethod answers 405 for anything but POST and reports whether it did.
+// It runs before the environment is read, so a wrong method is never
+// mistaken for a misconfigured server.
+func rejectMethod(w http.ResponseWriter, r *http.Request) bool {
+	if r.Method == http.MethodPost {
+		return false
+	}
+	w.Header().Set("Allow", "POST")
+	httpjson.WriteError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "bootstrap accepts POST only")
+	return true
+}
+
 func (s Service) serve(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		w.Header().Set("Allow", "POST")
-		httpjson.WriteError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "bootstrap accepts POST only")
+	if rejectMethod(w, r) {
 		return
 	}
 	ctx := r.Context()
@@ -123,6 +133,9 @@ func googleFailed(w http.ResponseWriter, err error) {
 // the Google seams are built from the environment for this one request.
 func Handler(w http.ResponseWriter, r *http.Request) {
 	session.Require(func(w http.ResponseWriter, r *http.Request) {
+		if rejectMethod(w, r) {
+			return
+		}
 		d, err := deps.FromEnv(r.Context())
 		if err != nil {
 			httpjson.WriteError(w, http.StatusInternalServerError, "SERVER_MISCONFIGURED", err.Error())

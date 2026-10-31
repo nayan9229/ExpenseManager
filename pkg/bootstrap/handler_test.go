@@ -316,3 +316,16 @@ func TestTheSessionIsCheckedBeforeTheConfiguration(t *testing.T) {
 		t.Fatalf("status = %d body = %v, want 401 NOT_PAIRED before any configuration check", status, body)
 	}
 }
+
+func TestAWrongMethodIsRejectedBeforeTheConfigurationIsRead(t *testing.T) {
+	t.Setenv("JWT_SECRET", jwtSecret)
+	t.Setenv("GOOGLE_CLIENT_ID", "")
+	srv := httptest.NewServer(http.HandlerFunc(bootstrap.Handler))
+	t.Cleanup(srv.Close)
+
+	status, body := call(t, srv, http.MethodGet, pairedCookie(t))
+
+	if status != http.StatusMethodNotAllowed || body["code"] != "METHOD_NOT_ALLOWED" {
+		t.Fatalf("status = %d body = %v, want 405 METHOD_NOT_ALLOWED even on a misconfigured server", status, body)
+	}
+}

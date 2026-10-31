@@ -280,3 +280,16 @@ func TestMissingGoogleConfigIsReportedNotPanicked(t *testing.T) {
 		t.Fatalf("status = %d body = %s, want 500 SERVER_MISCONFIGURED", status, raw)
 	}
 }
+
+func TestAWrongMethodIsRejectedBeforeTheConfigurationIsRead(t *testing.T) {
+	t.Setenv("JWT_SECRET", jwtSecret)
+	t.Setenv("GOOGLE_CLIENT_ID", "")
+	srv := httptest.NewServer(http.HandlerFunc(expenses.Handler))
+	t.Cleanup(srv.Close)
+
+	status, raw := call(t, srv, http.MethodDelete, pairedCookie(t))
+
+	if status != http.StatusMethodNotAllowed || !strings.Contains(raw, "METHOD_NOT_ALLOWED") {
+		t.Fatalf("status = %d body = %s, want 405 METHOD_NOT_ALLOWED even on a misconfigured server", status, raw)
+	}
+}

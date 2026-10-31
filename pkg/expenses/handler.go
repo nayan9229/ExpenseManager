@@ -77,6 +77,9 @@ func (s Service) Handler() http.HandlerFunc {
 // the Ledger is built from the environment for this one request.
 func Handler(w http.ResponseWriter, r *http.Request) {
 	session.Require(func(w http.ResponseWriter, r *http.Request) {
+		if rejectMethod(w, r) {
+			return
+		}
 		d, err := deps.FromEnv(r.Context())
 		if err != nil {
 			httpjson.WriteError(w, http.StatusInternalServerError, "SERVER_MISCONFIGURED", err.Error())
@@ -86,14 +89,24 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 	})(w, r)
 }
 
-func (s Service) serve(w http.ResponseWriter, r *http.Request) {
-	switch r.Method {
-	case http.MethodGet:
-		s.read(w, r)
-	default:
-		w.Header().Set("Allow", "GET")
-		httpjson.WriteError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "expenses accepts GET only for now")
+// rejectMethod answers 405 for anything this ticket does not serve and
+// reports whether it did. It runs before the environment is read, so a wrong
+// method is never mistaken for a misconfigured server. Ticket 04 adds POST,
+// PUT and DELETE here and in serve.
+func rejectMethod(w http.ResponseWriter, r *http.Request) bool {
+	if r.Method == http.MethodGet {
+		return false
 	}
+	w.Header().Set("Allow", "GET")
+	httpjson.WriteError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "expenses accepts GET only for now")
+	return true
+}
+
+func (s Service) serve(w http.ResponseWriter, r *http.Request) {
+	if rejectMethod(w, r) {
+		return
+	}
+	s.read(w, r)
 }
 
 func (s Service) read(w http.ResponseWriter, r *http.Request) {
