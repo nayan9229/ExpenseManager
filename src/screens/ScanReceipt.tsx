@@ -285,6 +285,7 @@ function ReceiptExpense({ file, member, model, onSaved, onCancel, onUnpaired }: 
       error={error}
       onSubmit={(draft) => void submit(draft)}
       onCancel={onCancel}
+      receiptNumberField
     >
       <section ref={panel} aria-label="Receipt" aria-live="polite" className="flex scroll-mt-4 flex-col gap-4 rounded-3xl border-4 border-sand bg-warm-white p-5">
         {stage.kind !== 'removed' && (

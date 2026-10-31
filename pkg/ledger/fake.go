@@ -62,7 +62,7 @@ func (f *Fake) Ensure(context.Context) (Report, error) {
 	}
 	report := Report{
 		SpreadsheetID: FakeSpreadsheetID, URL: URLFor(FakeSpreadsheetID),
-		TabCreated: map[Tab]bool{}, HeaderWritten: map[Tab]bool{}, HeaderMismatch: map[Tab][]string{},
+		TabCreated: map[Tab]bool{}, HeaderWritten: map[Tab]bool{}, HeaderExtended: map[Tab][]string{}, HeaderMismatch: map[Tab][]string{},
 	}
 	if !f.Exists {
 		f.Exists = true
@@ -80,6 +80,11 @@ func (f *Fake) Ensure(context.Context) (Report, error) {
 				t.Header = append([]string(nil), Columns[tab]...)
 				f.Writes++
 				report.HeaderWritten[tab] = true
+			case HeaderShort:
+				missing := MissingHeaders(tab, t.Header)
+				t.Header = append(t.Header, missing...)
+				f.Writes++
+				report.HeaderExtended[tab] = missing
 			case HeaderMismatched:
 				report.HeaderMismatch[tab] = append([]string(nil), t.Header...)
 			}

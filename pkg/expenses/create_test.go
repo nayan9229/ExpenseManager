@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/nayan9229/ExpenseManager/pkg/ledger"
@@ -64,7 +65,7 @@ func TestCreatingAnExpenseAppendsOneRowAndAnswers201(t *testing.T) {
 	}
 	wantRow := []string{
 		newID, "2026-10-31T09:15:00+05:30", "2026-10-31T09:15:00+05:30", "2026-10-30", "ramesh", "ramesh",
-		"450", "INR", "Medical & Pharmacy", "medicines for Papa", "Cash", "", "", "", "none", "active",
+		"450", "INR", "Medical & Pharmacy", "medicines for Papa", "Cash", "", "", "", "none", "active", "",
 	}
 	if rows := f.ledger.Tab(ledger.Expenses).Rows; !reflect.DeepEqual(rows, [][]string{wantRow}) {
 		t.Errorf("Expenses tab = %q\nwant           %q", rows, [][]string{wantRow})
@@ -74,6 +75,7 @@ func TestCreatingAnExpenseAppendsOneRowAndAnswers201(t *testing.T) {
 		"expenseDate": "2026-10-30", "loggedBy": "ramesh", "paidBy": "ramesh", "amount": 450.0, "currency": "INR",
 		"category": "Medical & Pharmacy", "merchantNote": "medicines for Papa", "paymentMethod": "Cash",
 		"driveFileId": "", "driveViewUrl": "", "fileHash": "", "reimbursementStatus": "none", "status": "active",
+		"receiptNumber": "",
 	}
 	if !reflect.DeepEqual(body, want) {
 		t.Errorf("body = %v\nwant   %v", body, want)
@@ -168,6 +170,7 @@ func TestEachValidationFailureIsRejectedAndNothingIsAppended(t *testing.T) {
 		{"unknown Paid_By", func(r map[string]any) { r["paidBy"] = "stranger" }, "UNKNOWN_MEMBER", "Paid By \"stranger\" is not a Member in the Ledger"},
 		{"unknown Reimbursement", func(r map[string]any) { r["reimbursementStatus"] = "maybe" }, "INVALID_REIMBURSEMENT", "Reimbursement must be none, pending or done"},
 		{"note too long", func(r map[string]any) { r["merchantNote"] = string(bytes.Repeat([]byte("a"), 501)) }, "INVALID_NOTE", "The note can be at most 500 characters"},
+		{"Receipt Number too long", func(r map[string]any) { r["receiptNumber"] = string(bytes.Repeat([]byte("7"), 41)) }, "INVALID_RECEIPT_NUMBER", "The Receipt Number can be at most 40 characters"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -185,6 +188,39 @@ func TestEachValidationFailureIsRejectedAndNothingIsAppended(t *testing.T) {
 			}
 			if rows := f.ledger.Tab(ledger.Expenses).Rows; len(rows) != 0 {
 				t.Errorf("appended %q on a rejected request", rows)
+			}
+		})
+	}
+}
+
+func TestTheReceiptNumberIsStoredTrimmedAsTextInColumnQ(t *testing.T) {
+	cases := map[string]string{
+		"leading zeros kept": "  004521  ",
+		"a slash kept":       "4521/A",
+		"forty characters":   string(bytes.Repeat([]byte("9"), 40)),
+		"blank is none":      "   ",
+	}
+	for name, sent := range cases {
+		t.Run(name, func(t *testing.T) {
+			f := newFixture(t)
+			req := validCreate()
+			req["receiptNumber"] = sent
+
+			status, body, raw := post(t, f, req)
+
+			if status != http.StatusCreated {
+				t.Fatalf("status = %d body = %s, want 201", status, raw)
+			}
+			want := strings.TrimSpace(sent)
+			if got := f.ledger.Tab(ledger.Expenses).Rows[0][16]; got != want {
+				t.Errorf("Receipt_Number cell = %q, want %q", got, want)
+			}
+			if body["receiptNumber"] != want {
+				t.Errorf("receiptNumber = %v, want %q", body["receiptNumber"], want)
+			}
+			model, _ := readModel(t, f)
+			if got := list(t, model, "expenses"); len(got) != 1 || got[0]["receiptNumber"] != want {
+				t.Errorf("read model expenses = %v, want receiptNumber %q", got, want)
 			}
 		})
 	}

@@ -4,7 +4,7 @@
  * so no phone ever needs a Google login. Thumbnails are cached in Dexie by
  * file ID so the last five render offline.
  */
-import { ApiError } from './api'
+import { ApiError, normaliseReceiptNumber, type Expense } from './api'
 import { appDb, type CachedThumbnail, type ExpenseDb } from './db'
 
 export type ReceiptDeps = {
@@ -18,6 +18,15 @@ export type ReceiptDeps = {
  * Expenses scrolled past before. Drive thumbnails are tens of KB each.
  */
 export const MAX_THUMBNAILS = 100
+
+/**
+ * The line shown under the note in Admin Mode's list and in the Receipt
+ * full-screen view: "No. 004521/A", or null when there is no Receipt Number.
+ */
+export function receiptNumberLine(expense: Pick<Expense, 'receiptNumber'>): string | null {
+  const number = normaliseReceiptNumber(expense.receiptNumber)
+  return number ? `No. ${number}` : null
+}
 
 /** The `receipt` function's URL for a file, or for its thumbnail. */
 export function receiptUrl(fileId: string, opts: { thumb?: boolean } = {}): string {

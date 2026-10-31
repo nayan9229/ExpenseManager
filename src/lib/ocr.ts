@@ -5,7 +5,7 @@
  * parent sees and confirms the form. Fields the model was unsure of, or
  * could not fill, are highlighted.
  */
-import { ApiError, readJson, type Category, type PaymentMethod } from './api'
+import { ApiError, MAX_RECEIPT_NUMBER, normaliseReceiptNumber, readJson, type Category, type PaymentMethod } from './api'
 import { addDays } from './istDate'
 import { MAX_AMOUNT } from './keypad'
 import type { ExpenseDraft } from './quickExpense'
@@ -17,11 +17,13 @@ export type OcrResult = {
   totalAmount: number | null
   taxAmount: number | null
   currency: string | null
-  /** One of the seven seeded Categories. */
-  category: string
+  /** One of the Household's Categories (the Ledger's spelling), or null when none fitted. */
+  category: string | null
   paymentMethod: PaymentMethod | null
+  /** The number the merchant printed on the Receipt, as text (GLOSSARY: Receipt Number). */
+  receiptNumber: string | null
   /** The model's 0..1 estimate per field. */
-  confidence: { merchant: number; expenseDate: number; totalAmount: number; category: number; paymentMethod: number }
+  confidence: { merchant: number; expenseDate: number; totalAmount: number; category: number; paymentMethod: number; receiptNumber: number }
   /** About five words on what was bought. */
   lineItemSummary: string
   model: string
@@ -54,7 +56,9 @@ const sameName = (a: string, b: string) => a.replace(/\s+/g, ' ').trim().toLower
  * draft: the Member's Payment Method, today, "own pocket" off). `categories`
  * are the ones this Member can pick. A value that cannot be used (missing,
  * a Category not on the grid, a date after tomorrow, no amount) keeps the
- * base value and is highlighted, like a low-confidence one.
+ * base value and is highlighted, like a low-confidence one. The Receipt
+ * No. is the exception: left blank when there is none, and highlighted only
+ * when the model read one it was unsure of.
  */
 export function prefillFromOcr(result: OcrResult, base: ExpenseDraft, categories: Category[], today: string): { draft: ExpenseDraft; highlight: Highlight } {
   const draft: ExpenseDraft = { ...base }
@@ -68,7 +72,7 @@ export function prefillFromOcr(result: OcrResult, base: ExpenseDraft, categories
     highlight.amount = true
   }
 
-  const match = categories.find((c) => sameName(c.name, result.category))
+  const match = result.category === null ? undefined : categories.find((c) => sameName(c.name, result.category ?? ''))
   if (match) draft.category = match.name
   if (!match || unsure(result.confidence.category)) highlight.category = true
 
@@ -85,6 +89,12 @@ export function prefillFromOcr(result: OcrResult, base: ExpenseDraft, categories
   const note = [merchant, items].filter(Boolean).join(': ').slice(0, NOTE_MAX)
   if (note) draft.note = note
   if (!merchant || unsure(result.confidence.merchant)) highlight.note = true
+
+  // `?? null`: an answer from a server that predates the Receipt Number.
+  const receiptNumber = normaliseReceiptNumber(result.receiptNumber)?.slice(0, MAX_RECEIPT_NUMBER)
+  draft.receiptNumber = receiptNumber ?? ''
+  // Many Receipts print no number, so a blank one is not a doubt: only a reading the model was unsure of is highlighted.
+  if (receiptNumber && unsure(result.confidence.receiptNumber)) highlight.receiptNumber = true
 
   return { draft, highlight }
 }

@@ -22,6 +22,9 @@ type Expense struct {
 	FileHash            string               `json:"fileHash"`
 	ReimbursementStatus ledger.Reimbursement `json:"reimbursementStatus"`
 	Status              ledger.Status        `json:"status"`
+	// ReceiptNumber is blank when the Receipt showed none (or there is no
+	// Receipt).
+	ReceiptNumber string `json:"receiptNumber"`
 }
 
 func viewOf(e ledger.Expense) Expense {
@@ -30,6 +33,6 @@ func viewOf(e ledger.Expense) Expense {
 		LoggedBy: e.LoggedBy, PaidBy: e.PaidBy, Amount: e.Amount, Currency: e.Currency,
 		Category: e.Category, MerchantNote: e.MerchantNote, PaymentMethod: e.PaymentMethod,
 		DriveFileID: e.DriveFileID, DriveViewURL: e.DriveViewURL, FileHash: e.FileHash,
-		ReimbursementStatus: e.Reimbursement, Status: e.Status,
+		ReimbursementStatus: e.Reimbursement, Status: e.Status, ReceiptNumber: e.ReceiptNumber,
 	}
 }

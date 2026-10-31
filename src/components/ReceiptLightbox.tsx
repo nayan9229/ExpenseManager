@@ -11,6 +11,8 @@ type Props = {
   driveViewUrl: string
   /** Read out with the dialog, e.g. "Receipt for ₹450, Groceries". */
   title: string
+  /** "No. 004521/A" under the title, when the Expense has a Receipt Number. */
+  subtitle?: string | null
   onClose: () => void
 }
 
@@ -32,7 +34,7 @@ function messageFor(err: unknown): string {
  * thumbnail; Receipts over the proxy's 4 MB cap show the thumbnail and an
  * "Open in Google Drive" button. Close is a labelled 56px button at the top.
  */
-export function ReceiptLightbox({ fileId, driveViewUrl, title, onClose }: Props) {
+export function ReceiptLightbox({ fileId, driveViewUrl, title, subtitle, onClose }: Props) {
   const [shown, setShown] = useState<Shown>({ state: 'loading' })
   const [attempt, setAttempt] = useState(0)
 
@@ -75,7 +77,10 @@ export function ReceiptLightbox({ fileId, driveViewUrl, title, onClose }: Props)
   return (
     <div role="dialog" aria-modal="true" aria-label={title} className="fixed inset-0 z-50 flex flex-col bg-mocha text-warm-white">
       <div className="flex shrink-0 items-center justify-between gap-3 p-4 pt-[max(1rem,env(safe-area-inset-top))]">
-        <p className="min-w-0 truncate text-lg font-semibold">{title}</p>
+        <div className="flex min-w-0 flex-col">
+          <p className="truncate text-lg font-semibold">{title}</p>
+          {subtitle && <p className="truncate text-lg">{subtitle}</p>}
+        </div>
         <Button autoFocus icon={X} variant="secondary" onClick={onClose}>
           Close
         </Button>

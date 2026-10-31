@@ -31,3 +31,5 @@ coverage/
 skills-lock.json
 docs
 .scratch
+.vercel
+.env*

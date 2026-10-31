@@ -21,14 +21,16 @@ thumbnails. Quick Expense is an amount keypad (digits, +50, +100, +500), a
 Category grid filtered by the Member's Role, Payment Method chips, Today /
 Yesterday / a date, a note and an "I paid from my own pocket" switch. Scan
 Receipt takes a photo (or a gallery image or PDF), shrinks it on the phone,
-uploads it straight to Drive and lets Gemini fill in the form; the Member only
-checks and taps Save. Tapping an Expense opens it to fix or delete. With no
+uploads it straight to Drive and lets Gemini fill in the form, including the
+Receipt Number printed on the Receipt; the Member only checks and taps Save. The same
+Receipt added twice (the same file, or the same Receipt Number and amount) gets an
+"already added … Add anyway" warning. Tapping an Expense opens it to fix or delete. With no
 signal, a save waits on the phone ("Saved on phone") and Syncs by itself when
 the phone is back online. Text is 18px or larger, every button at least 56px.
 
 **Admin Mode** (the Admin, behind a 4-digit PIN). Burn Rate bars per Category
 for the month (terracotta when over Budget) and a Household total, a Category
-breakdown, a Member filter, month-to-month navigation, the Reimbursable Queue
+breakdown, a Member filter, each Expense's Receipt Number under its note, month-to-month navigation, the Reimbursable Queue
 grouped by Member with "Mark done", a "Due this month, not logged" card from
 the Recurring Rules with one-tap prefill, and buttons to open the Ledger,
 Repair (re-run Bootstrap), Pair a device (QR + Pair Code), Scan Receipt, Quick
@@ -161,11 +163,13 @@ using it is picked on the device.
    `FAMILY_ACCESS_CODE` under "Or the Household Access Code" and tap "Pair
    with the Access Code". The first paired device runs **Bootstrap**: it
    creates the `Receipts` folder and the `Expenses_Database` Ledger (four
-   tabs with headers, seven Categories, one `admin` Member) in your Drive
+   tabs with headers, eight Categories, one `admin` Member) in your Drive
    folder. Bootstrap is safe to run again ("Repair" in Admin Mode does): it
    recreates a missing tab, freezes row 1, writes the headers into a tab
-   whose row 1 is empty, and never overwrites a row 1 that differs; Repair
-   names that tab and the headers it expects.
+   whose row 1 is empty, adds headers missing only from the end of row 1 (a
+   Ledger made by an older version gets its new columns this way), and never
+   overwrites a row 1 that differs otherwise; Repair names that tab and the
+   headers it expects.
 2. **On an iPhone, install first, then pair inside the installed app.** iOS
    keeps the Home Screen app's storage apart from Safari, so a pairing done in
    Safari does not carry over. In Safari: Share, Add to Home Screen, Add; open
@@ -218,6 +222,28 @@ app picks up edits on its next refresh (within a minute, or on reopening).
   (`parent,admin`); a kid never sees a Category not visible to `kid`.
 - Renaming a Category does not rename it on past Expenses (they keep the old
   name in the `Category` column).
+- Receipt OCR picks from exactly the Categories in this tab, read on every
+  Scan. When none fits it uses `Other` if the tab has it; otherwise it leaves
+  the Category empty and the form asks the Member to pick one.
+- A new Ledger starts with eight Categories (Budget `0`, visible to `all`):
+
+  | Category_Name | Icon_Emoji | Color_Hex |
+  | --- | --- | --- |
+  | Groceries & Vegetables | 🥬 | `#6E7250` |
+  | Medical & Pharmacy | 💊 | `#A9603F` |
+  | Utilities & Bills | 💡 | `#A98545` |
+  | School & Kids | 🎒 | `#4A3728` |
+  | Household & Help | 🧹 | `#D8C9AE` |
+  | Dining & Outings | 🍽️ | `#A9603F` |
+  | Petrol & Transport | 🚗 | `#A98545` |
+  | Other | 📦 | `#6E7250` |
+
+- **Adding Petrol & Transport to an existing Ledger.** Bootstrap seeds
+  Categories only into an empty tab, so a Ledger made before this Category
+  existed does not get it by itself. Add a row by hand: `Petrol & Transport`,
+  `🚗`, `#A98545`, `0`, `all` (put it above `Other` to keep that last). Voice
+  entry then maps petrol, diesel, CNG, fuel, parking, toll, auto, rickshaw,
+  cab, taxi, Uber, Ola and Rapido to it, and Receipt OCR can pick it.
 
 **Recurring_Rules** tab: `Rule_ID`, `Title`, `Amount`, `Category`,
 `Due_Day_Of_Month` (1 to 31; monthly only). Each rule appears in Admin Mode's
@@ -231,9 +257,15 @@ notifications.
 **Expenses** tab: `ID`, `Created_At`, `Updated_At`, `Expense_Date`,
 `Logged_By`, `Paid_By`, `Amount`, `Currency`, `Category`, `Merchant_Note`,
 `Payment_Method`, `Drive_File_ID`, `Drive_View_URL`, `File_Hash`,
-`Reimbursement_Status`, `Status`. Written by the app; edit it by hand only to
-fix data. A delete in the app sets `Status` to `deleted` (the row stays).
-`Reimbursement_Status` is `none`, `pending` or `done`.
+`Reimbursement_Status`, `Status`, `Receipt_Number`. Written by the app; edit it
+by hand only to fix data. A delete in the app sets `Status` to `deleted` (the
+row stays). `Reimbursement_Status` is `none`, `pending` or `done`.
+`Receipt_Number` (column Q) is the number the merchant printed on the Receipt,
+at most 40 characters, always stored as text (`004521` keeps its zeros); blank
+means none. It is set from the Scan form and the Edit screen, never by Quick
+Expense or voice. A Ledger made by an older version has no column Q: run
+**Repair** in Admin Mode once and it adds the `Receipt_Number` header; older
+rows read as having no Receipt Number.
 
 ## Local development
 

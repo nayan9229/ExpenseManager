@@ -143,7 +143,7 @@ func TestFirstRunSeedsCategoriesAndTheAdmin(t *testing.T) {
 
 	wantCategories := []string{
 		"Groceries & Vegetables", "Medical & Pharmacy", "Utilities & Bills", "School & Kids",
-		"Household & Help", "Dining & Outings", "Other",
+		"Household & Help", "Dining & Outings", "Petrol & Transport", "Other",
 	}
 	var gotCategories []string
 	for _, row := range f.ledger.Tab(ledger.Categories).Rows {
@@ -157,6 +157,11 @@ func TestFirstRunSeedsCategoriesAndTheAdmin(t *testing.T) {
 	}
 	if !reflect.DeepEqual(gotCategories, wantCategories) {
 		t.Errorf("Categories = %q, want %q", gotCategories, wantCategories)
+	}
+
+	petrol := []string{"Petrol & Transport", "🚗", "#A98545", "0", "all"}
+	if rows := f.ledger.Tab(ledger.Categories).Rows; len(rows) < 7 || !reflect.DeepEqual(rows[6], petrol) {
+		t.Errorf("seventh Category row = %q, want %q", rows, petrol)
 	}
 
 	members := f.ledger.Tab(ledger.Members).Rows
@@ -174,7 +179,7 @@ func TestFirstRunSeedsCategoriesAndTheAdmin(t *testing.T) {
 	if rows := f.ledger.Tab(ledger.RecurringRules).Rows; len(rows) != 0 {
 		t.Errorf("Recurring_Rules seeded with %q, want none", rows)
 	}
-	wantSeeded := map[string]any{"Expenses": 0.0, "Members": 1.0, "Categories": 7.0, "Recurring_Rules": 0.0}
+	wantSeeded := map[string]any{"Expenses": 0.0, "Members": 1.0, "Categories": 8.0, "Recurring_Rules": 0.0}
 	if !reflect.DeepEqual(report["seeded"], wantSeeded) {
 		t.Errorf("seeded = %v, want %v", report["seeded"], wantSeeded)
 	}
@@ -228,10 +233,10 @@ func TestSeedsOnlyTheEmptyTabs(t *testing.T) {
 	if rows := f.ledger.Tab(ledger.Members).Rows; !reflect.DeepEqual(rows, [][]string{ramesh}) {
 		t.Errorf("Members = %q, want the one existing row untouched", rows)
 	}
-	if rows := f.ledger.Tab(ledger.Categories).Rows; len(rows) != 7 {
-		t.Errorf("Categories has %d rows, want the 7 seeds", len(rows))
+	if rows := f.ledger.Tab(ledger.Categories).Rows; len(rows) != 8 {
+		t.Errorf("Categories has %d rows, want the 8 seeds", len(rows))
 	}
-	wantSeeded := map[string]any{"Expenses": 0.0, "Members": 0.0, "Categories": 7.0, "Recurring_Rules": 0.0}
+	wantSeeded := map[string]any{"Expenses": 0.0, "Members": 0.0, "Categories": 8.0, "Recurring_Rules": 0.0}
 	if !reflect.DeepEqual(report["seeded"], wantSeeded) {
 		t.Errorf("seeded = %v, want %v", report["seeded"], wantSeeded)
 	}
@@ -244,8 +249,8 @@ func TestATabOfBlankLinesCountsAsEmpty(t *testing.T) {
 	run(t, f)
 
 	rows := f.ledger.Tab(ledger.Categories).Rows
-	if len(rows) != 9 || rows[2][0] != "Groceries & Vegetables" {
-		t.Errorf("Categories = %q, want the 7 seeds appended after the 2 blank lines", rows)
+	if len(rows) != 10 || rows[2][0] != "Groceries & Vegetables" {
+		t.Errorf("Categories = %q, want the 8 seeds appended after the 2 blank lines", rows)
 	}
 }
 

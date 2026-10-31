@@ -36,6 +36,27 @@ func NewSheets(sheetsSvc *sheets.Service, driveSvc *drive.Service, folderID, she
 // `0123` keeps its zero and a date stays `YYYY-MM-DD` when the Admin types it.
 var numericColumns = map[string]bool{"Amount": true, "Monthly_Budget_Limit": true, "Due_Day_Of_Month": true}
 
+// textColumns must read back exactly as written even in a Ledger whose
+// column was added after Bootstrap formatted the tab (so it has no plain-text
+// format): Append and Update send every non-blank cell with one leading
+// apostrophe. USER_ENTERED treats it as a quote prefix ("this is text"),
+// which is not part of the cell's value: the Sheets API documents a typed
+// `'123` as the string value `123` (ExtendedValue.stringValue, "Leading
+// single quotes are not included"), and values.get returns that value. So
+// Read takes nothing off: `004521` keeps its zeros, `12-2026` never becomes a
+// date, `=X` is never a formula, and `'A12` (sent with a second apostrophe
+// in front) reads back as `'A12`.
+var textColumns = map[Tab]map[int]bool{Expenses: {columnIndex(Expenses, "Receipt_Number"): true}}
+
+func columnIndex(tab Tab, name string) int {
+	for i, col := range Columns[tab] {
+		if col == name {
+			return i
+		}
+	}
+	panic("ledger: no column " + name + " in " + string(tab))
+}
+
 // locate returns the spreadsheet ID: the configured one, else the file named
 // SpreadsheetName in the folder, created when create is true.
 func (s *Sheets) locate(ctx context.Context, create bool) (id string, created bool, err error) {
@@ -67,7 +88,7 @@ func (s *Sheets) Ensure(ctx context.Context) (Report, error) {
 	}
 	report := Report{
 		SpreadsheetID: id, URL: URLFor(id), SpreadsheetCreated: createdSpreadsheet,
-		TabCreated: map[Tab]bool{}, HeaderWritten: map[Tab]bool{}, HeaderMismatch: map[Tab][]string{},
+		TabCreated: map[Tab]bool{}, HeaderWritten: map[Tab]bool{}, HeaderExtended: map[Tab][]string{}, HeaderMismatch: map[Tab][]string{},
 	}
 
 	ss, err := s.sheets.Spreadsheets.Get(id).Fields("sheets.properties(sheetId,title,gridProperties.frozenRowCount)").Context(ctx).Do()
@@ -94,9 +115,11 @@ func (s *Sheets) Ensure(ctx context.Context) (Report, error) {
 		}})
 	}
 	var headers []*sheets.ValueRange
+	var formats []*sheets.Request
 
-	// Repair the tabs that exist: freeze row 1, fill an empty row 1, and
-	// report (never overwrite) a row 1 that is something else.
+	// Repair the tabs that exist: freeze row 1, fill an empty row 1, finish
+	// a row 1 that lacks only trailing headers, and report (never overwrite)
+	// a row 1 that is something else.
 	if len(found) > 0 {
 		firstRows, err := s.firstRows(ctx, id, found)
 		if err != nil {
@@ -114,13 +137,18 @@ func (s *Sheets) Ensure(ctx context.Context) (Report, error) {
 			case HeaderEmpty:
 				headers = append(headers, &sheets.ValueRange{Range: a1(tab, "A1"), Values: [][]any{toAny(Columns[tab])}})
 				report.HeaderWritten[tab] = true
+			case HeaderShort:
+				from := len(firstRows[tab])
+				missing := MissingHeaders(tab, firstRows[tab])
+				headers = append(headers, &sheets.ValueRange{Range: a1(tab, columnLetter(from)+"1"), Values: [][]any{toAny(missing)}})
+				formats = append(formats, textFormatRequests(props.SheetId, Columns[tab], from)...)
+				report.HeaderExtended[tab] = missing
 			case HeaderMismatched:
 				report.HeaderMismatch[tab] = firstRows[tab]
 			}
 		}
 	}
 
-	var formats []*sheets.Request
 	if len(structural) > 0 {
 		added, err := s.sheets.Spreadsheets.BatchUpdate(id, &sheets.BatchUpdateSpreadsheetRequest{Requests: structural}).Context(ctx).Do()
 		if err != nil {
@@ -186,6 +214,14 @@ func formatRequests(sheetID int64, columns []string) []*sheets.Request {
 		Cell:   &sheets.CellData{UserEnteredFormat: &sheets.CellFormat{TextFormat: &sheets.TextFormat{Bold: true}}},
 		Fields: "userEnteredFormat.textFormat.bold",
 	}}}
+	return append(reqs, textFormatRequests(sheetID, columns, 0)...)
+}
+
+// textFormatRequests formats the non-numeric columns from index from on as
+// plain text below the header: all of a new tab, or the columns Ensure just
+// appended to an existing one.
+func textFormatRequests(sheetID int64, columns []string, from int) []*sheets.Request {
+	var reqs []*sheets.Request
 	start := -1
 	flush := func(end int) {
 		if start < 0 {
@@ -205,6 +241,9 @@ func formatRequests(sheetID int64, columns []string) []*sheets.Request {
 		start = -1
 	}
 	for i, col := range columns {
+		if i < from {
+			continue
+		}
 		if numericColumns[col] {
 			flush(i)
 			continue
@@ -270,7 +309,7 @@ func (s *Sheets) Append(ctx context.Context, tab Tab, rows [][]string) error {
 	}
 	values := make([][]any, len(rows))
 	for i, row := range rows {
-		values[i] = userEntered(row)
+		values[i] = userEntered(tab, row)
 	}
 	_, err = s.sheets.Spreadsheets.Values.Append(id, a1(tab, ""), &sheets.ValueRange{Values: values}).
 		ValueInputOption("USER_ENTERED").
@@ -289,7 +328,7 @@ func (s *Sheets) Update(ctx context.Context, tab Tab, index int, row []string) e
 	if err != nil {
 		return err
 	}
-	_, err = s.sheets.Spreadsheets.Values.Update(id, a1(tab, "A"+strconv.Itoa(index+2)), &sheets.ValueRange{Values: [][]any{userEntered(row)}}).
+	_, err = s.sheets.Spreadsheets.Values.Update(id, a1(tab, "A"+strconv.Itoa(index+2)), &sheets.ValueRange{Values: [][]any{userEntered(tab, row)}}).
 		ValueInputOption("USER_ENTERED").
 		Context(ctx).
 		Do()
@@ -320,12 +359,25 @@ func a1(tab Tab, cell string) string {
 	return "'" + string(tab) + "'!" + cell
 }
 
-// userEntered prepares a row for USER_ENTERED: numbers and dates are parsed
-// as the Admin would type them, and no cell can become a formula (see
-// escapeText).
-func userEntered(row []string) []any {
+// columnLetter is the A1 letter of a zero-based column index: 0 is A, 26 is AA.
+func columnLetter(i int) string {
+	letters := ""
+	for i++; i > 0; i = (i - 1) / 26 {
+		letters = string(rune('A'+(i-1)%26)) + letters
+	}
+	return letters
+}
+
+// userEntered prepares a row of tab for USER_ENTERED: numbers and dates are
+// parsed as the Admin would type them, no cell can become a formula (see
+// escapeText), and the textColumns are forced to text.
+func userEntered(tab Tab, row []string) []any {
 	out := make([]any, len(row))
 	for i, cell := range row {
+		if textColumns[tab][i] && cell != "" {
+			out[i] = "'" + cell
+			continue
+		}
 		out[i] = escapeText(cell)
 	}
 	return out

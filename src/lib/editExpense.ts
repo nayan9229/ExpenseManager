@@ -2,7 +2,7 @@
  * Editing and deleting an Expense (user stories 53 to 56): who may, and
  * the bridge between a stored Expense and the Quick Expense form's draft.
  */
-import { isActive, type Expense, type Member, type UpdateExpenseInput } from './api'
+import { isActive, normaliseReceiptNumber, type Expense, type Member, type UpdateExpenseInput } from './api'
 import type { ExpenseDraft } from './quickExpense'
 
 /**
@@ -25,6 +25,8 @@ export function draftFromExpense(expense: Expense): ExpenseDraft {
     note: expense.merchantNote,
     reimbursementStatus: expense.reimbursementStatus,
     paidBy: expense.paidBy,
+    // Absent on a copy from an older server: left out, so Save cannot wipe a Receipt No. it never saw.
+    ...(expense.receiptNumber === undefined ? {} : { receiptNumber: expense.receiptNumber }),
   }
 }
 
@@ -39,5 +41,7 @@ export function toUpdateInput(draft: ExpenseDraft, id: string): UpdateExpenseInp
     merchantNote: draft.note.trim(),
     paymentMethod: draft.paymentMethod,
     reimbursementStatus: draft.reimbursementStatus,
+    // Blank is sent as '' so Save clears a Receipt No. the Member deleted.
+    ...(draft.receiptNumber === undefined ? {} : { receiptNumber: normaliseReceiptNumber(draft.receiptNumber) ?? '' }),
   }
 }

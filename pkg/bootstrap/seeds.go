@@ -12,7 +12,7 @@ const (
 	sand       = "#D8C9AE"
 )
 
-// seedCategories are the seven Categories a fresh Household starts with
+// seedCategories are the eight Categories a fresh Household starts with
 // (spec: "Bootstrap"). Budget 0 means no Burn Rate bar until the Admin sets one.
 var seedCategories = []ledger.Category{
 	{Name: "Groceries & Vegetables", Emoji: "🥬", ColorHex: oliveSage},
@@ -21,6 +21,7 @@ var seedCategories = []ledger.Category{
 	{Name: "School & Kids", Emoji: "🎒", ColorHex: mocha},
 	{Name: "Household & Help", Emoji: "🧹", ColorHex: sand},
 	{Name: "Dining & Outings", Emoji: "🍽️", ColorHex: terracotta},
+	{Name: "Petrol & Transport", Emoji: "🚗", ColorHex: brass},
 	{Name: "Other", Emoji: "📦", ColorHex: oliveSage},
 }
 

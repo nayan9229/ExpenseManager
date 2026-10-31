@@ -41,6 +41,11 @@ const (
 // Currency is the only currency v1 knows.
 const Currency = "INR"
 
+// MaxReceiptNumberLength caps Receipt_Number, in characters: the
+// `expenses` function refuses a longer one and OCR treats a longer reading
+// as no reading.
+const MaxReceiptNumberLength = 40
+
 // DateLayout is how Expense_Date is written: `YYYY-MM-DD`.
 const DateLayout = "2006-01-02"
 
@@ -62,6 +67,11 @@ type Expense struct {
 	FileHash      string
 	Reimbursement Reimbursement
 	Status        Status
+	// ReceiptNumber is the number the merchant printed on the Receipt
+	// (GLOSSARY: Receipt Number); blank means none. The Sheets adapter always
+	// stores it as text, and it reads back exactly as written (only
+	// trimmed): nothing is unescaped, so `'A12` stays `'A12`.
+	ReceiptNumber string
 }
 
 // Row maps the Expense onto the Expenses column order.
@@ -69,7 +79,7 @@ func (e Expense) Row() []string {
 	return []string{
 		e.ID, e.CreatedAt, e.UpdatedAt, e.ExpenseDate, e.LoggedBy, e.PaidBy, formatAmount(e.Amount), e.Currency,
 		e.Category, e.MerchantNote, string(e.PaymentMethod), e.DriveFileID, e.DriveViewURL, e.FileHash,
-		string(e.Reimbursement), string(e.Status),
+		string(e.Reimbursement), string(e.Status), e.ReceiptNumber,
 	}
 }
 
@@ -122,6 +132,7 @@ func parseExpense(row []string) (Expense, bool) {
 		FileHash:      cell(13),
 		Reimbursement: reimbursementCell(row[14]),
 		Status:        parseStatus(row[15]),
+		ReceiptNumber: cell(16),
 	}
 	if e.PaidBy == "" {
 		e.PaidBy = e.LoggedBy

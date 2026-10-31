@@ -10,22 +10,10 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/nayan9229/ExpenseManager/pkg/ledger"
 )
-
-// Categories are the seven Categories Bootstrap seeds (spec "Bootstrap"),
-// the enum the model picks from. A Household that renamed its Categories
-// gets no Category match on the phone, and the field is highlighted.
-var Categories = []string{
-	"Groceries & Vegetables",
-	"Medical & Pharmacy",
-	"Utilities & Bills",
-	"School & Kids",
-	"Household & Help",
-	"Dining & Outings",
-	"Other",
-}
 
 // PaymentMethods is the Payment Method enum (spec "Ledger schema").
 var PaymentMethods = func() []string {
@@ -39,13 +27,18 @@ var PaymentMethods = func() []string {
 // Result is what the `ocr` function answers: the fields that prefill the
 // form. A null means the Receipt did not show it.
 type Result struct {
-	Merchant      *string  `json:"merchant"`
-	ExpenseDate   *string  `json:"expenseDate"`
-	TotalAmount   *float64 `json:"totalAmount"`
-	TaxAmount     *float64 `json:"taxAmount"`
-	Currency      *string  `json:"currency"`
-	Category      string   `json:"category"`
-	PaymentMethod *string  `json:"paymentMethod"`
+	Merchant    *string  `json:"merchant"`
+	ExpenseDate *string  `json:"expenseDate"`
+	TotalAmount *float64 `json:"totalAmount"`
+	TaxAmount   *float64 `json:"taxAmount"`
+	Currency    *string  `json:"currency"`
+	// Category is one of the Household's Categories in the Ledger's
+	// spelling, or null when none fits (the phone highlights the field).
+	Category      *string `json:"category"`
+	PaymentMethod *string `json:"paymentMethod"`
+	// ReceiptNumber is the number the merchant printed to identify the
+	// Receipt (GLOSSARY: Receipt Number), as text.
+	ReceiptNumber *string `json:"receiptNumber"`
 	// Confidence is the model's own 0..1 estimate per prefilled field; the
 	// phone highlights anything under 0.6.
 	Confidence      Confidence `json:"confidence"`
@@ -61,19 +54,22 @@ type Confidence struct {
 	TotalAmount   float64 `json:"totalAmount"`
 	Category      float64 `json:"category"`
 	PaymentMethod float64 `json:"paymentMethod"`
+	ReceiptNumber float64 `json:"receiptNumber"`
 }
 
 // fields is the property order: the schema's propertyOrdering and the keys
 // Validate demands.
-var fields = []string{"merchant", "expenseDate", "totalAmount", "taxAmount", "currency", "category", "paymentMethod", "confidence", "lineItemSummary"}
+var fields = []string{"merchant", "expenseDate", "totalAmount", "taxAmount", "currency", "category", "paymentMethod", "receiptNumber", "confidence", "lineItemSummary"}
 
-var confidenceFields = []string{"merchant", "expenseDate", "totalAmount", "category", "paymentMethod"}
+var confidenceFields = []string{"merchant", "expenseDate", "totalAmount", "category", "paymentMethod", "receiptNumber"}
 
 // ResponseSchema is generationConfig.responseSchema: the OpenAPI-subset
 // Schema object of the REST reference
 // (https://ai.google.dev/api/generate-content). Every key is required and the unknowns are nullable, so the
 // model always writes every key and says null rather than guessing.
-func ResponseSchema() map[string]any {
+// categories are the Household's Categories, read from the Ledger on every
+// call: the Category enum offers exactly those names, or null.
+func ResponseSchema(categories []string) map[string]any {
 	nullableString := func(desc string) map[string]any {
 		return map[string]any{"type": "STRING", "nullable": true, "description": desc}
 	}
@@ -89,11 +85,12 @@ func ResponseSchema() map[string]any {
 			"totalAmount": map[string]any{"type": "NUMBER", "nullable": true, "minimum": 0, "description": "Grand total actually paid, in the receipt currency"},
 			"taxAmount":   map[string]any{"type": "NUMBER", "nullable": true, "minimum": 0, "description": "Total tax (GST etc.) included in the total"},
 			"currency":    map[string]any{"type": "STRING", "nullable": true, "description": "ISO 4217 code, e.g. INR"},
-			"category":    map[string]any{"type": "STRING", "format": "enum", "enum": Categories},
+			"category":    categorySchema(categories),
 			"paymentMethod": map[string]any{
 				"type": "STRING", "format": "enum", "nullable": true, "enum": PaymentMethods,
 				"description": "How it was paid, only if the receipt says so",
 			},
+			"receiptNumber": nullableString("The bill, invoice or receipt number printed to identify this receipt, exactly as printed"),
 			"confidence": map[string]any{
 				"type": "OBJECT", "properties": confidence, "required": confidenceFields, "propertyOrdering": confidenceFields,
 				"description": "Your confidence from 0 to 1 in each field",
@@ -105,10 +102,26 @@ func ResponseSchema() map[string]any {
 	}
 }
 
+// categorySchema is the Category property: a nullable enum of the
+// Household's Categories. With no Categories there is nothing to pick, and
+// an empty enum is not a valid schema, so it is a string the model must
+// leave null (Validate drops anything else).
+func categorySchema(categories []string) map[string]any {
+	if len(categories) == 0 {
+		return map[string]any{"type": "STRING", "nullable": true, "description": "Always null"}
+	}
+	return map[string]any{
+		"type": "STRING", "format": "enum", "nullable": true, "enum": categories,
+		"description": "The Household's spending Category this belongs to, or null if none fits",
+	}
+}
+
 // Prompt is the instruction sent with every Receipt.
 const Prompt = "This is a receipt, bill or invoice from India. Read it and fill every field of the schema. " +
 	"Use null for anything the receipt does not show; do not guess. totalAmount is the final amount paid. " +
-	"Pick the closest category; use Other when none fits. " +
+	"Pick the closest category from its list; when none fits, use Other if the list has it, otherwise null. " +
+	"Petrol, diesel, CNG, parking, tolls, autos, cabs and taxis are transport. " +
+	"receiptNumber is the bill, invoice or receipt number the merchant printed, not a GSTIN, phone number or payment reference. " +
 	"paymentMethod is UPI for UPI, GPay, PhonePe, Paytm or a VPA; Card for credit or debit cards; Cash; or Bank Transfer for NEFT, IMPS or RTGS."
 
 // Rejected is a model answer the phone cannot use: the handler's 422.
@@ -131,7 +144,8 @@ var currencyCode = regexp.MustCompile(`^[A-Z]{3}$`)
 // Validate gates on the finish reason and checks the JSON against the
 // schema in Go: the API promises syntactically valid JSON, not values that
 // keep to the schema (research answer 5). Anything else is a *Rejected.
-func Validate(a Answer) (Result, error) {
+// categories are the names the schema offered.
+func Validate(a Answer, categories []string) (Result, error) {
 	if a.BlockReason != "" {
 		return Result{}, &Rejected{Code: "OCR_BLOCKED", Message: "Gemini refused to read this receipt (" + a.BlockReason + ")"}
 	}
@@ -179,18 +193,36 @@ func Validate(a Answer) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
-	if category == nil || !slices.Contains(Categories, *category) {
-		return Result{}, invalid("category %s is not one of the seven", show(raw["category"]))
+	// The Category is matched as the `expenses` function will match it on
+	// Save (ledger.FindCategory: case and surrounding spaces ignored) and
+	// given in the Ledger's spelling. One the Household does not have is no
+	// Category, not a broken answer: the Admin may have renamed one while
+	// the model answered.
+	if category != nil {
+		if name, ok := ledger.FindCategory(categories, *category); ok {
+			r.Category = &name
+		}
 	}
-	r.Category = *category
 	if r.PaymentMethod, err = optionalString(raw, "paymentMethod"); err != nil {
 		return Result{}, err
 	}
 	if r.PaymentMethod != nil && !slices.Contains(PaymentMethods, *r.PaymentMethod) {
 		return Result{}, invalid("paymentMethod %q is not one of %s", *r.PaymentMethod, strings.Join(PaymentMethods, ", "))
 	}
+	if r.ReceiptNumber, err = optionalString(raw, "receiptNumber"); err != nil {
+		return Result{}, err
+	}
+	if r.ReceiptNumber != nil && (*r.ReceiptNumber == "" || utf8.RuneCountInString(*r.ReceiptNumber) > ledger.MaxReceiptNumberLength) {
+		r.ReceiptNumber = nil
+	}
 	if r.Confidence, err = confidenceOf(raw["confidence"]); err != nil {
 		return Result{}, err
+	}
+	if r.Category == nil {
+		r.Confidence.Category = 0
+	}
+	if r.ReceiptNumber == nil {
+		r.Confidence.ReceiptNumber = 0
 	}
 	summary, err := optionalString(raw, "lineItemSummary")
 	if err != nil {
@@ -271,7 +303,7 @@ func confidenceOf(v json.RawMessage) (Confidence, error) {
 	if err != nil {
 		return Confidence{}, err
 	}
-	var out [5]float64
+	var out [6]float64
 	for i, k := range confidenceFields {
 		var n float64
 		if err := json.Unmarshal(raw[k], &n); err != nil || n < 0 || n > 1 {
@@ -279,5 +311,5 @@ func confidenceOf(v json.RawMessage) (Confidence, error) {
 		}
 		out[i] = n
 	}
-	return Confidence{Merchant: out[0], ExpenseDate: out[1], TotalAmount: out[2], Category: out[3], PaymentMethod: out[4]}, nil
+	return Confidence{Merchant: out[0], ExpenseDate: out[1], TotalAmount: out[2], Category: out[3], PaymentMethod: out[4], ReceiptNumber: out[5]}, nil
 }
